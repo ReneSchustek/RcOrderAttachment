@@ -122,7 +122,7 @@ final class RcOrderAttachment extends Plugin
      * Holt einen Core-Service, ohne den Plugin-Lifecycle zu sprengen.
      *
      * `ContainerInterface::get()` wirft bei unbekannter **oder nicht-öffentlicher** ID. Eine
-     * ungeprüfte Abfrage reisst damit `install()`/`uninstall()` mitten im Ablauf ab und
+     * ungeprüfte Abfrage reißt damit `install()`/`uninstall()` mitten im Ablauf ab und
      * hinterlässt einen halben Zustand. Wer eine ID falsch rät, soll das im Log finden — nicht
      * an einem abgebrochenen Kommando.
      */

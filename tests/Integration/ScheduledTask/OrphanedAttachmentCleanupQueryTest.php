@@ -88,7 +88,7 @@ final class OrphanedAttachmentCleanupQueryTest extends IntegrationTestCase
 
         self::assertTrue(
             $this->existiert($gebunden),
-            'an eine Bestellung gebundene Dateien duerfen der Waisen-Suche nie ins Netz gehen',
+            'an eine Bestellung gebundene Dateien dürfen der Waisen-Suche nie ins Netz gehen',
         );
     }
 

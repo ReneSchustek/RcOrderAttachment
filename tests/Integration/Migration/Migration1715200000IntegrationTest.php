@@ -100,7 +100,7 @@ final class Migration1715200000IntegrationTest extends TestCase
         $connection = static::connection();
         $migration = new Migration1715200000CreateOrderAttachmentTable();
 
-        // Ein Datensatz vor dem zweiten Lauf: Idempotenz heisst nicht nur „wirft nicht",
+        // Ein Datensatz vor dem zweiten Lauf: Idempotenz heißt nicht nur „wirft nicht",
         // sondern auch „räumt nichts weg". Ein `DROP TABLE IF EXISTS` vor dem `CREATE`
         // wäre ebenfalls wiederholbar — und würde bei jedem Plugin-Update alle Anhänge
         // löschen. `assertTrue(true)` hätte das durchgewinkt.

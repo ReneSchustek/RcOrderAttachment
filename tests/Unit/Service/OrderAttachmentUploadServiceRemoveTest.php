@@ -39,7 +39,7 @@ use Symfony\Component\HttpFoundation\Session\Storage\MockArraySessionStorage;
  *
  * Der Remove-Pfad ist sicherheitskritisch: Der Fremdschlüssel
  * `fk.rc_order_attachment.media_id` steht auf `ON DELETE CASCADE`. Ein Media-Delete
- * reisst den Anhang jeder Bestellung mit, die darauf zeigt.
+ * reißt den Anhang jeder Bestellung mit, die darauf zeigt.
  *
  * Pattern: echte Instanzen mit gemockten Shopware-Boundaries.
  */

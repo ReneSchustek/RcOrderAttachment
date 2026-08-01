@@ -18,7 +18,7 @@ use Shopware\Core\Framework\Uuid\Uuid;
  *   1. `created_at < cutoff AND order_version_id = LIVE` — wählt die abgelaufenen Anhänge.
  *      Ein Fehler an der Grenze löscht Bestelldaten zu früh.
  *   2. Danach werden Medien gelöscht, auf die **keine** Anhang-Zeile mehr zeigt.
- *      Ein Fehler hier reisst Dateien mit, die eine andere Bestellung noch braucht — der Fall
+ *      Ein Fehler hier reißt Dateien mit, die eine andere Bestellung noch braucht — der Fall
  *      entsteht real bei Cart-Splits, wo mehrere Positionen dieselbe Datei teilen.
  *
  * Unit-Tests konnten davon nur den Kontrollfluss prüfen; welche Zeilen die Abfragen liefern,
@@ -123,7 +123,7 @@ final class ExpiredAttachmentCleanupQueryTest extends IntegrationTestCase
 
         $this->handler->run();
 
-        self::assertTrue($this->anhangExistiert($anhang), '0 Tage heisst: nie löschen');
+        self::assertTrue($this->anhangExistiert($anhang), '0 Tage heißt: nie löschen');
         self::assertTrue($this->mediumExistiert($medium));
     }
 

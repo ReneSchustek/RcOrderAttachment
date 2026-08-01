@@ -62,7 +62,7 @@ final class CheckoutOrderPlacedSubscriberTest extends TestCase
      *      der Fall bei Rückkehr von einem externen Zahlungsanbieter.
      * Warum: Das Sicherheitsnetz. Bleibt ein Pending-Upload in der Session stehen, zeigt ihn die
      *        Confirm-Page des nächsten Warenkorbs samt gültigem Remove-Token; ein Klick löscht
-     *        das Media und reisst über `ON DELETE CASCADE` den Anhang der bereits
+     *        das Media und reißt über `ON DELETE CASCADE` den Anhang der bereits
      *        abgeschlossenen Bestellung mit — der Datenverlust, den der Test unten für den
      *        regulären Bestellweg absichert.
      * Erwartet: Die Session ist danach leer.

@@ -17,7 +17,7 @@ parameters:
             path: src/Core/Content/OrderAttachment/OrderAttachmentDefinition.php
 
         # `SystemConfigService::set()` trägt `reason:new-optional-parameter` — die
-        # Methode bleibt, sie bekommt in 6.8 nur einen zusaetzlichen optionalen
+        # Methode bleibt, sie bekommt in 6.8 nur einen zusätzlichen optionalen
         # Parameter `$silent`. Es gibt heute nichts, worauf man migrieren könnte:
         # `setMultiple()` trägt dieselbe Markierung, und der Parameter lässt sich
         # gegen die 6.7-Signatur nicht übergeben. Geprüft und bewusst hingenommen;

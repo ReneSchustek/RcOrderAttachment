@@ -4,7 +4,7 @@
 
     {# Die Remove-Route erzwingt `token` = 32 Hex-Zeichen (`requirements` im Controller).
        Ein sprechender Platzhalter wie `__TOKEN__` bringt den URL-Generator zum Werfen
-       ("must match [a-f0-9]{32}") und reisst die gesamte Confirm-Page mit HTTP 500.
+       ("must match [a-f0-9]{32}") und reißt die gesamte Confirm-Page mit HTTP 500.
        Also einen regex-konformen Platzhalter erzeugen und ihn im JS ersetzen. #}
     {% set removeTokenPlaceholder = '00000000000000000000000000000000' %}
 

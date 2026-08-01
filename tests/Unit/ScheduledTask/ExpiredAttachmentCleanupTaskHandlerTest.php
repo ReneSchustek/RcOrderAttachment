@@ -99,7 +99,7 @@ final class ExpiredAttachmentCleanupTaskHandlerTest extends TestCase
      * Was: Abgelaufener Anhang, dessen Media aber noch von einer ANDEREN Order
      *      referenziert wird (Cart-Split-Sharing).
      * Warum: SICHERHEITSKRITISCH — das geteilte Media darf nicht gelöscht werden,
-     *        sonst reisst der FK `ON DELETE CASCADE` den Anhang der anderen Order
+     *        sonst reißt der FK `ON DELETE CASCADE` den Anhang der anderen Order
      *        mit. Der abgelaufene Anhang selbst wird trotzdem entfernt.
      * Erwartet: `attachment.delete` ja, `media.delete` NEIN.
      */
