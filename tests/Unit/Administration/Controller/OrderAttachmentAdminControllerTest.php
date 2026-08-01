@@ -119,6 +119,8 @@ final class OrderAttachmentAdminControllerTest extends TestCase
 
     /**
      * @param list<OrderAttachmentEntity> $entities
+     *
+     * @return EntityRepository<OrderAttachmentCollection>
      */
     private function repository(array $entities): EntityRepository
     {

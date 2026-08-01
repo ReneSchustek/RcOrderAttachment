@@ -22,6 +22,7 @@ use Ruhrcoder\RcOrderAttachment\Service\Validation\MimeTypeValidator;
 use Ruhrcoder\RcOrderAttachment\Service\Validation\TotalSizeValidator;
 use Ruhrcoder\RcOrderAttachment\Service\Validation\UploadValidator;
 use RuntimeException;
+use Shopware\Core\Content\Media\Aggregate\MediaFolder\MediaFolderCollection;
 use Shopware\Core\Content\Media\File\MediaFile;
 use Shopware\Core\Content\Media\MediaService;
 use Shopware\Core\Framework\Context;
@@ -169,6 +170,8 @@ final class OrderAttachmentUploadServiceWhitelistScopeTest extends TestCase
     /**
      * Repository, das den Plugin-Media-Folder als vorhanden meldet — sonst legt der
      * Installer ihn an, was für diesen Test nichts beiträgt.
+     *
+     * @return EntityRepository<MediaFolderCollection>
      */
     private function folderRepository(): EntityRepository
     {
@@ -176,7 +179,7 @@ final class OrderAttachmentUploadServiceWhitelistScopeTest extends TestCase
         $repository->method('searchIds')->willReturnCallback(
             static fn (Criteria $criteria, Context $context): IdSearchResult => new IdSearchResult(
                 1,
-                [['primaryKey' => self::FOLDER_ID, 'data' => []]],
+                [self::FOLDER_ID => ['primaryKey' => self::FOLDER_ID, 'data' => []]],
                 $criteria,
                 $context,
             ),

@@ -199,7 +199,9 @@ final class OrderAttachmentUploadServiceRemoveTest extends TestCase
      *
      * Ein Double, das die Criteria ignoriert, würde den Cascade-Schutz auch dann bestätigen,
      * wenn der Service auf das falsche Feld oder den falschen Wert filtert — der Test wäre
-     * vakuant. Genau das war die Lücke aus dem Deep-Review.
+     * vakuant.
+     *
+     * @return EntityRepository<OrderAttachmentCollection>
      */
     private function attachmentRepository(int $total): EntityRepository
     {
@@ -218,12 +220,22 @@ final class OrderAttachmentUploadServiceRemoveTest extends TestCase
 
                 $treffer = $trifftMedia ? $total : 0;
 
+                // IdSearchResult erwartet die Treffer nach ihrem Schlüssel abgelegt,
+                // nicht als fortlaufende Liste.
+                $eintraege = [];
+                foreach ($treffer > 0 ? range(1, $treffer) : [] as $i) {
+                    $schluessel = \sprintf('%032d', $i);
+                    $eintraege[$schluessel] = ['primaryKey' => $schluessel, 'data' => []];
+                }
+
+                // PHP macht aus einem rein numerischen Zeichenketten-Schlüssel keinen
+                // Ganzzahl-Schluessel, solange führende Nullen dranstehen; die Analyse
+                // sieht das nicht und weitet den Typ auf int|string.
+                /** @var array<string, array{primaryKey: string, data: array<string, mixed>}> $eintraege */
+
                 return new IdSearchResult(
                     $treffer,
-                    array_map(
-                        static fn (int $i): array => ['primaryKey' => \sprintf('%032d', $i), 'data' => []],
-                        $treffer > 0 ? range(1, $treffer) : [],
-                    ),
+                    $eintraege,
                     $criteria,
                     $context,
                 );

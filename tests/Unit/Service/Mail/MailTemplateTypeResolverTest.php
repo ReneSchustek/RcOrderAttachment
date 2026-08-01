@@ -143,7 +143,7 @@ final class MailTemplateTypeResolverTest extends TestCase
     }
 
     /**
-     * @return callable(Criteria, Context): EntitySearchResult
+     * @return callable(Criteria, Context): EntitySearchResult<MailTemplateCollection>
      */
     private function searchResult(?MailTemplateEntity $template): callable
     {

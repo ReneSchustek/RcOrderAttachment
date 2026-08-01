@@ -48,12 +48,12 @@ final class OrphanedAttachmentCleanupQueryTest extends IntegrationTestCase
         $mediaRepository = static::repository('media.repository');
         /** @var EntityRepository<MediaCollection> $mediaRepository */
         $this->mediaRepository = $mediaRepository;
-        $this->handler = static::getContainer()->get(OrphanedAttachmentCleanupTaskHandler::class);
+        $this->handler = static::service(OrphanedAttachmentCleanupTaskHandler::class);
 
         static::systemConfig()
             ->set('RcOrderAttachment.config.orphanRetentionHours', self::AUFBEWAHRUNG_STUNDEN);
 
-        $installer = static::getContainer()->get(MediaFolderInstaller::class);
+        $installer = static::service(MediaFolderInstaller::class);
         $ordnerId = $installer->findFolderId($this->context) ?? $installer->ensureFolder($this->context);
         $this->pluginOrdnerId = $ordnerId;
     }
