@@ -1,0 +1,45 @@
+# ============================================================
+# .gitignore – RcOrderAttachment
+# ============================================================
+
+# Arbeitsmaterial des Entwicklers — gehört nicht ins Repository.
+# Liegt strukturell außerhalb des Plugin-Verzeichnisses; die Einträge bleiben
+# als Absicherung, falls doch etwas hineinrutscht.
+
+# Lokale Dev-Helper
+
+# IDE
+.idea/
+.vscode/
+
+# Composer / PHP
+vendor/
+composer.phar
+
+# Build / Cache
+var/
+.phpunit.cache/
+.php-cs-fixer.cache
+
+# Frontend
+node_modules/
+/src/Resources/app/administration/dist/
+
+# Das gebaute Storefront-JS und das Admin-Bundle werden BEWUSST mitgeliefert und sind deshalb
+# nicht ignoriert: Der Live-Server hat kein Node. Ohne diese Dateien käme das Upload-Feld auf
+# der Confirm-Seite ohne sein JavaScript an -- ein Feld, das nichts tut, und das faellt erst
+# auf, wenn ein Kunde eine Datei anhaengen will.
+#   src/Resources/app/storefront/dist/     (Storefront-JS)
+#   src/Resources/public/administration/   (Admin-Bundle)
+# Frische pruefen: dist-freshness-check.sh im brief-done-gate baut neu und vergleicht.
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+secrets.json

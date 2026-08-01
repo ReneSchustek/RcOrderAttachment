@@ -1,0 +1,172 @@
+{% block page_checkout_rc_order_attachment %}
+    {% set config = rcAttachment.config %}
+    {% set pending = rcAttachment.pendingUploads %}
+
+    {# Die Remove-Route erzwingt `token` = 32 Hex-Zeichen (`requirements` im Controller).
+       Ein sprechender Platzhalter wie `__TOKEN__` bringt den URL-Generator zum Werfen
+       ("must match [a-f0-9]{32}") und reisst die gesamte Confirm-Page mit HTTP 500.
+       Also einen regex-konformen Platzhalter erzeugen und ihn im JS ersetzen. #}
+    {% set removeTokenPlaceholder = '00000000000000000000000000000000' %}
+
+    <div class="card checkout-card rc-order-attachment"
+         data-rc-order-attachment-upload="true"
+         data-upload-url="{{ path('frontend.rc-order-attachment.upload') }}"
+         data-remove-url-template="{{ path('frontend.rc-order-attachment.remove', { token: removeTokenPlaceholder }) }}"
+         data-remove-token-placeholder="{{ removeTokenPlaceholder }}"
+         data-max-files="{{ config.maxFiles }}"
+         data-max-file-size-bytes="{{ config.maxFileSizeBytes() }}"
+         data-max-total-size-bytes="{{ config.maxTotalSizeBytes() }}"
+         data-allowed-extensions="{{ config.allowedExtensions|join(',') }}"
+         data-required="{{ config.required ? 'true' : 'false' }}"
+         data-text-remove="{{ 'rcOrderAttachment.field.buttonRemove'|trans|striptags }}"
+         data-text-no-files="{{ 'rcOrderAttachment.status.noFiles'|trans|striptags }}"
+         data-text-generic-error="{{ 'rcOrderAttachment.error.generic'|trans|striptags }}"
+         data-text-progress="{{ 'rcOrderAttachment.field.progress'|trans|striptags }}"
+         data-error-messages="{{ {
+             pluginDisabled: 'rcOrderAttachment.error.pluginDisabled'|trans|striptags,
+             emptyUpload: 'rcOrderAttachment.error.emptyUpload'|trans|striptags,
+             uploadError: 'rcOrderAttachment.error.uploadError'|trans|striptags,
+             extensionNotAllowed: 'rcOrderAttachment.error.extensionNotAllowed'|trans|striptags,
+             extensionBlacklisted: 'rcOrderAttachment.error.extensionBlacklisted'|trans|striptags,
+             mimeNotAllowed: 'rcOrderAttachment.error.mimeNotAllowed'|trans|striptags,
+             magicBytesMismatch: 'rcOrderAttachment.error.magicBytesMismatch'|trans|striptags,
+             fileSizeExceeded: 'rcOrderAttachment.error.fileSizeExceeded'|trans|striptags,
+             totalSizeExceeded: 'rcOrderAttachment.error.totalSizeExceeded'|trans|striptags,
+             fileCountExceeded: 'rcOrderAttachment.error.fileCountExceeded'|trans|striptags,
+             dangerousContentDetected: 'rcOrderAttachment.error.dangerousContentDetected'|trans|striptags,
+             rateLimitExceeded: 'rcOrderAttachment.error.rateLimitExceeded'|trans|striptags
+         }|json_encode }}">
+
+        <div class="card-body">
+            {% block page_checkout_rc_order_attachment_header %}
+                <div class="d-flex align-items-baseline justify-content-between flex-wrap">
+                    <h2 class="card-title">
+                        {{ 'rcOrderAttachment.section.heading'|trans|sw_sanitize }}
+                    </h2>
+                    <small class="text-muted">
+                        {% if config.required %}
+                            {{ 'rcOrderAttachment.section.required'|trans|sw_sanitize }}
+                        {% else %}
+                            {{ 'rcOrderAttachment.section.optional'|trans|sw_sanitize }}
+                        {% endif %}
+                    </small>
+                </div>
+                <p class="text-muted">
+                    {{ 'rcOrderAttachment.section.subheading'|trans|sw_sanitize }}
+                </p>
+            {% endblock %}
+
+            {% block page_checkout_rc_order_attachment_limits %}
+                <ul id="rc-order-attachment-limits" class="rc-order-attachment-limits small text-muted list-unstyled mb-3">
+                    <li>{{ 'rcOrderAttachment.limits.maxFiles'|trans({ '%count%': config.maxFiles })|sw_sanitize }}</li>
+                    <li>{{ 'rcOrderAttachment.limits.maxFileSize'|trans({ '%size%': config.maxFileSizeKb ~ ' KB' })|sw_sanitize }}</li>
+                    <li>{{ 'rcOrderAttachment.limits.maxTotalSize'|trans({ '%size%': config.maxTotalSizeKb ~ ' KB' })|sw_sanitize }}</li>
+                    <li>{{ 'rcOrderAttachment.limits.allowedExtensions'|trans({ '%list%': rcAttachment.allowedExtensionsCsv })|sw_sanitize }}</li>
+                </ul>
+            {% endblock %}
+
+            {% block page_checkout_rc_order_attachment_field %}
+                <div class="mb-3">
+                    <label for="rc-order-attachment-input" class="form-label">
+                        {{ 'rcOrderAttachment.field.label'|trans|sw_sanitize }}
+                    </label>
+                    <input type="file"
+                           id="rc-order-attachment-input"
+                           class="form-control"
+                           accept="{{ rcAttachment.acceptAttribute }}"
+                           aria-describedby="rc-order-attachment-limits"
+                           multiple
+                           data-rc-order-attachment-input="true">
+                    <div class="form-text" data-rc-order-attachment-hint="true">
+                        {{ 'rcOrderAttachment.field.dragHint'|trans|sw_sanitize }}
+                    </div>
+                </div>
+            {% endblock %}
+
+            {% block page_checkout_rc_order_attachment_progress %}
+                <div class="rc-order-attachment-progress d-none" data-rc-order-attachment-progress="true">
+                    <div class="progress">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated"
+                             role="progressbar"
+                             aria-label="{{ 'rcOrderAttachment.field.progress'|trans|striptags }}"
+                             aria-valuemin="0"
+                             aria-valuemax="100"
+                             aria-valuenow="0"
+                             style="width: 0%"
+                             data-rc-order-attachment-progress-bar="true"></div>
+                    </div>
+                </div>
+            {% endblock %}
+
+            {% block page_checkout_rc_order_attachment_error %}
+                <div class="alert alert-danger d-none mt-3"
+                     role="alert"
+                     aria-live="assertive"
+                     aria-atomic="true"
+                     data-rc-order-attachment-error="true"></div>
+            {% endblock %}
+
+            {% block page_checkout_rc_order_attachment_list %}
+                <ul class="rc-order-attachment-list list-group list-group-flush mt-3"
+                    data-rc-order-attachment-list="true"
+                    aria-live="polite"
+                    aria-atomic="false"
+                    aria-relevant="additions removals">
+                    {% if pending|length == 0 %}
+                        <li class="list-group-item text-muted small"
+                            data-rc-order-attachment-empty="true">
+                            {{ 'rcOrderAttachment.status.noFiles'|trans|sw_sanitize }}
+                        </li>
+                    {% else %}
+                        {% for upload in pending %}
+                            <li class="list-group-item d-flex justify-content-between align-items-center"
+                                data-rc-order-attachment-item="{{ upload.token }}"
+                                data-rc-order-attachment-item-size="{{ upload.fileSize }}">
+                                <span class="d-inline-flex align-items-center gap-2">
+                                    <span class="icon icon-sm">{% sw_icon 'file' %}</span>
+                                    <span class="rc-order-attachment-item-name">{{ upload.originalFileName|sw_sanitize }}</span>
+                                    <small class="text-muted">({{ (upload.fileSize / 1024)|round(1) }} KB)</small>
+                                </span>
+                                <button type="button"
+                                        class="btn btn-link btn-sm rc-order-attachment-remove"
+                                        data-rc-order-attachment-remove="{{ upload.token }}"
+                                        aria-label="{{ 'rcOrderAttachment.field.buttonRemoveAria'|trans({ '%name%': upload.originalFileName })|striptags }}">
+                                    {{ 'rcOrderAttachment.field.buttonRemove'|trans|sw_sanitize }}
+                                </button>
+                            </li>
+                        {% endfor %}
+                    {% endif %}
+                </ul>
+            {% endblock %}
+
+            {% block page_checkout_rc_order_attachment_required_hint %}
+                {% if config.required %}
+                    <div class="form-text mt-2 fst-italic">
+                        {{ 'rcOrderAttachment.requiredHint'|trans|sw_sanitize }}
+                    </div>
+                {% endif %}
+            {% endblock %}
+
+            {% block page_checkout_rc_order_attachment_privacy %}
+                <details class="rc-order-attachment-privacy small text-muted mt-3">
+                    <summary>{{ 'rcOrderAttachment.privacy.title'|trans|sw_sanitize }}</summary>
+                    <div class="mt-2">
+                        <p class="mb-1">{{ 'rcOrderAttachment.privacy.summary'|trans|sw_sanitize }}</p>
+                        <ul class="list-unstyled mb-0">
+                            <li>{{ 'rcOrderAttachment.privacy.storage'|trans|sw_sanitize }}</li>
+                            <li>
+                                {% if config.attachmentRetentionEnabled() %}
+                                    {{ 'rcOrderAttachment.privacy.retention'|trans({ '%days%': config.attachmentRetentionDays })|sw_sanitize }}
+                                {% else %}
+                                    {{ 'rcOrderAttachment.privacy.retentionUnlimited'|trans|sw_sanitize }}
+                                {% endif %}
+                            </li>
+                            <li>{{ 'rcOrderAttachment.privacy.access'|trans|sw_sanitize }}</li>
+                            <li>{{ 'rcOrderAttachment.privacy.rights'|trans|sw_sanitize }}</li>
+                        </ul>
+                    </div>
+                </details>
+            {% endblock %}
+        </div>
+    </div>
+{% endblock %}

@@ -1,0 +1,69 @@
+{
+  "rcOrderAttachment": {
+    "section": {
+      "heading": "Dokumente anhängen",
+      "subheading": "Hängen Sie technische Zeichnungen, Skizzen oder Pläne zu Ihrer Bestellung an.",
+      "optional": "Optional",
+      "required": "Pflicht"
+    },
+    "field": {
+      "label": "Dateien auswählen",
+      "buttonChoose": "Datei auswählen",
+      "buttonRemove": "Entfernen",
+      "buttonRemoveAria": "Datei \"%name%\" entfernen",
+      "dragHint": "Datei hier ablegen oder klicken zum Auswählen.",
+      "progress": "Wird hochgeladen…"
+    },
+    "limits": {
+      "maxFiles": "Maximal %count% Dateien",
+      "maxFileSize": "Maximal %size% pro Datei",
+      "maxTotalSize": "Maximal %size% insgesamt",
+      "allowedExtensions": "Erlaubte Formate: %list%",
+      "remaining": "Noch %files% Datei(en), %size% verfügbar"
+    },
+    "status": {
+      "uploaded": "Hochgeladen",
+      "noFiles": "Noch keine Dateien hochgeladen."
+    },
+    "error": {
+      "generic": "Beim Hochladen ist ein Fehler aufgetreten. Bitte erneut versuchen.",
+      "pluginDisabled": "Die Upload-Funktion ist derzeit deaktiviert.",
+      "emptyUpload": "Es wurde keine Datei übermittelt.",
+      "uploadError": "Die Datei konnte nicht hochgeladen werden.",
+      "extensionNotAllowed": "Dieses Datei-Format ist nicht erlaubt.",
+      "extensionBlacklisted": "Aus Sicherheitsgründen ist dieser Datei-Typ nicht erlaubt.",
+      "mimeNotAllowed": "Der erkannte Datei-Typ passt nicht zur Endung.",
+      "magicBytesMismatch": "Die Datei scheint manipuliert zu sein (Inhalt passt nicht zur Endung).",
+      "fileSizeExceeded": "Die Datei ist zu groß.",
+      "totalSizeExceeded": "Die Gesamt-Größe aller Dateien ist überschritten.",
+      "fileCountExceeded": "Die maximale Anzahl an Dateien ist erreicht.",
+      "dangerousContentDetected": "Die Datei enthält ausführbaren Code und wurde abgelehnt.",
+      "rateLimitExceeded": "Zu viele Upload-Versuche. Bitte warten Sie einen Moment.",
+      "unauthorized": "Sie haben keine Berechtigung für diesen Download.",
+      "notFound": "Datei nicht gefunden.",
+      "downloadError": "Datei konnte nicht heruntergeladen werden.",
+      "sessionUnavailable": "Ihre Sitzung ist abgelaufen. Bitte laden Sie die Seite neu und versuchen Sie es erneut."
+    },
+    "requiredHint": "Bitte mindestens eine Datei hochladen, bevor Sie die Bestellung abschließen.",
+    "account": {
+      "heading": "Hochgeladene Dokumente",
+      "downloadLabel": "Datei \"%name%\" herunterladen",
+      "noFiles": "Keine Dokumente zu dieser Bestellung."
+    },
+    "privacy": {
+      "title": "Datenschutz-Hinweis",
+      "summary": "Hochgeladene Dateien werden an unsere Mitarbeiter zur Bearbeitung Ihrer Bestellung übermittelt.",
+      "storage": "Gespeichert wird in einem nicht-öffentlichen Bereich unseres Shops — kein direkter Web-Zugriff möglich.",
+      "retention": "Aufbewahrungsfrist: %days% Tage nach Bestellabschluss, danach automatische Löschung.",
+      "retentionUnlimited": "Aufbewahrung bis zur Löschung Ihrer Bestellung.",
+      "access": "Zugriff: ausschließlich unsere Mitarbeiter zur Bestellbearbeitung.",
+      "rights": "Sie können Ihre Dateien jederzeit in Ihrem Kundenkonto einsehen."
+    }
+  },
+  "error": {
+    "rc-order-attachment-required": "Bitte laden Sie mindestens ein Dokument hoch, bevor Sie die Bestellung abschließen."
+  },
+  "checkout": {
+    "rc-order-attachment-required": "Bitte laden Sie mindestens ein Dokument hoch, bevor Sie die Bestellung abschließen."
+  }
+}

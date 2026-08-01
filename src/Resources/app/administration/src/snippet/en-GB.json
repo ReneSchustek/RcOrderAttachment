@@ -1,0 +1,15 @@
+{
+    "rc-order-attachment": {
+        "list": {
+            "cardTitle": "Order attachments",
+            "empty": "No files were uploaded for this order.",
+            "columnName": "File name",
+            "columnSize": "Size",
+            "columnType": "Type",
+            "columnUploaded": "Uploaded",
+            "download": "Download",
+            "loadError": "The order attachments could not be loaded.",
+            "downloadError": "The attachment could not be downloaded."
+        }
+    }
+}

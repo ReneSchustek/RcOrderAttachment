@@ -1,0 +1,69 @@
+{
+  "rcOrderAttachment": {
+    "section": {
+      "heading": "Attach documents",
+      "subheading": "Attach technical drawings, sketches, or plans to your order.",
+      "optional": "Optional",
+      "required": "Required"
+    },
+    "field": {
+      "label": "Select files",
+      "buttonChoose": "Choose file",
+      "buttonRemove": "Remove",
+      "buttonRemoveAria": "Remove file \"%name%\"",
+      "dragHint": "Drop file here or click to select.",
+      "progress": "Uploading…"
+    },
+    "limits": {
+      "maxFiles": "Maximum %count% files",
+      "maxFileSize": "Maximum %size% per file",
+      "maxTotalSize": "Maximum %size% total",
+      "allowedExtensions": "Allowed formats: %list%",
+      "remaining": "%files% file(s) and %size% remaining"
+    },
+    "status": {
+      "uploaded": "Uploaded",
+      "noFiles": "No files uploaded yet."
+    },
+    "error": {
+      "generic": "An error occurred during upload. Please try again.",
+      "pluginDisabled": "The upload feature is currently disabled.",
+      "emptyUpload": "No file was submitted.",
+      "uploadError": "The file could not be uploaded.",
+      "extensionNotAllowed": "This file format is not allowed.",
+      "extensionBlacklisted": "This file type is not allowed for security reasons.",
+      "mimeNotAllowed": "The detected file type does not match the extension.",
+      "magicBytesMismatch": "The file appears to be tampered (content does not match the extension).",
+      "fileSizeExceeded": "The file is too large.",
+      "totalSizeExceeded": "The total size of all files is exceeded.",
+      "fileCountExceeded": "The maximum number of files has been reached.",
+      "dangerousContentDetected": "The file contains executable code and was rejected.",
+      "rateLimitExceeded": "Too many upload attempts. Please wait a moment.",
+      "unauthorized": "You are not authorised for this download.",
+      "notFound": "File not found.",
+      "downloadError": "File could not be downloaded.",
+      "sessionUnavailable": "Your session has expired. Please reload the page and try again."
+    },
+    "requiredHint": "Please upload at least one file before completing the order.",
+    "account": {
+      "heading": "Uploaded documents",
+      "downloadLabel": "Download file \"%name%\"",
+      "noFiles": "No documents for this order."
+    },
+    "privacy": {
+      "title": "Privacy notice",
+      "summary": "Uploaded files are forwarded to our staff for processing your order.",
+      "storage": "Stored in a private area of our shop — no direct web access possible.",
+      "retention": "Retention: %days% days after order completion, then automatic deletion.",
+      "retentionUnlimited": "Retained until your order is deleted.",
+      "access": "Access: only our staff for order processing.",
+      "rights": "You can view your files at any time in your customer account."
+    }
+  },
+  "error": {
+    "rc-order-attachment-required": "Please upload at least one document before completing your order."
+  },
+  "checkout": {
+    "rc-order-attachment-required": "Please upload at least one document before completing your order."
+  }
+}

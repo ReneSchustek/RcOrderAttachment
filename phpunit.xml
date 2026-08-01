@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Lokale phpunit.xml: führt nur die Unit-Suite aus.
+    Die Integration-Suite (tests/Integration/) braucht den Shopware-Kernel +
+    MySQL und läuft ausschließlich gegen eine echte Shopware-Installation
+    via phpunit.xml.dist.
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/10.5/phpunit.xsd"
+         bootstrap="tests/TestBootstrap.php"
+         executionOrder="random"
+         cacheDirectory=".phpunit.cache">
+    <source><include><directory>./src/</directory></include></source>
+    <php><env name="APP_ENV" value="test"/></php>
+    <testsuites>
+        <testsuite name="Unit"><directory>tests/Unit</directory></testsuite>
+    </testsuites>
+</phpunit>

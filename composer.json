@@ -1,0 +1,67 @@
+{
+    "name": "ruhrcoder/rc-order-attachment",
+    "description": "Shopware 6 Plugin — Customer lädt im Checkout Dokumente hoch (Zeichnungen, Skizzen, Pläne), die an die Bestell-Bestätigungs-Mail angehängt werden.",
+    "type": "shopware-platform-plugin",
+    "license": "MIT",
+    "version": "1.0.7",
+    "authors": [
+        {"name": "René Schustek", "email": "rene@ruhrcoder.de", "homepage": "https://ruhrcoder.de", "role": "Developer"}
+    ],
+    "require": {
+        "php": ">=8.2",
+        "shopware/core": "~6.7.0 || ~6.8.0",
+        "shopware/storefront": "~6.7.0 || ~6.8.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5 || ^11.0",
+        "phpstan/phpstan": "^1.12",
+        "ekino/phpstan-banned-code": "^2.0",
+        "phpstan/phpstan-strict-rules": "^1.5",
+        "phpstan/phpstan-deprecation-rules": "^1.2",
+        "friendsofphp/php-cs-fixer": "^3.0"
+    },
+    "extra": {
+        "shopware-plugin-class": "Ruhrcoder\\RcOrderAttachment\\RcOrderAttachment",
+        "label": {
+            "de-DE": "Bestellungs-Anhänge",
+            "en-GB": "Order Attachments"
+        },
+        "description": {
+            "de-DE": "Kunde lädt im Checkout Dokumente hoch (Zeichnungen, Skizzen, Pläne), die an die Bestell-Bestätigungs-E-Mail angehängt werden.",
+            "en-GB": "Customer uploads documents during checkout (drawings, sketches, plans) that are attached to the order confirmation email."
+        },
+        "manufacturerLink": {
+            "de-DE": "https://ruhrcoder.de",
+            "en-GB": "https://ruhrcoder.de"
+        },
+        "supportLink": {
+            "de-DE": "https://ruhrcoder.de",
+            "en-GB": "https://ruhrcoder.de"
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Ruhrcoder\\RcOrderAttachment\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Ruhrcoder\\RcOrderAttachment\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "symfony/runtime": true
+        },
+        "platform": {
+            "php": "8.3.6"
+        }
+    },
+    "scripts": {
+        "test": "vendor/bin/phpunit",
+        "phpstan": "vendor/bin/phpstan analyse --memory-limit=512M",
+        "cs-fix": "vendor/bin/php-cs-fixer fix",
+        "cs-check": "vendor/bin/php-cs-fixer fix --dry-run --diff",
+        "quality": ["@cs-check", "@phpstan", "@test"]
+    }
+}

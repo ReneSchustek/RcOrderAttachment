@@ -1,0 +1,44 @@
+name: Sicherheit
+
+# Wöchentliches Abhängigkeits-Audit — unabhängig von Push und Pull Request.
+# Ein fertiges Plugin wird nicht mehr gepusht, Advisories erscheinen trotzdem.
+
+on:
+  schedule:
+    # Montags 06:00 UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Abhängigkeits-Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Quellcode auschecken
+        uses: actions/checkout@v5
+
+      - name: PHP 8.3 einrichten
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, xml, ctype, iconv, intl, pdo, pdo_mysql, curl, zip
+          coverage: none
+          tools: composer:v2
+
+      - name: Abhängigkeiten auflösen
+        # Ohne committeten Lock (Library-Konvention) löst install frisch auf
+        # und schreibt einen Lock in den Runner — audit braucht ihn.
+        # Mit Lock wird der gepinnte Stand geprüft. Ein Schritt für beide Fälle.
+        #
+        # --no-scripts: ein Audit liest den Lock, es braucht keine gebootete
+        # Anwendung. Ohne den Schalter scheitert Symfonys cache:clear an der
+        # fehlenden .env und das Audit käme nie zum Zug.
+        run: composer install --no-interaction --prefer-dist --no-progress --no-scripts
+
+      - name: Bekannte Sicherheitslücken prüfen
+        # Abgekündigte Pakete werden nur berichtet — sie sind keine Lücke.
+        run: composer audit --no-interaction --abandoned=report

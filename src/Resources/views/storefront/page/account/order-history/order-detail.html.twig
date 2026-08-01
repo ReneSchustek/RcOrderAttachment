@@ -1,0 +1,41 @@
+{% sw_extends '@Storefront/storefront/page/account/order-history/order-detail.html.twig' %}
+
+{# Erweitert die Order-Detail-Sicht im Kundenkonto um eine Liste der vom Customer
+   hochgeladenen Anhänge mit Download-Link. Pflicht nach DSGVO Art. 15 (Auskunft). #}
+
+{% block page_account_order_documents_table %}
+    {{ parent() }}
+
+    {% set rcAttachmentList = order.extensions.rcOrderAttachmentList %}
+    {% if rcAttachmentList and rcAttachmentList.hasAttachments() %}
+        {% block page_account_order_rc_attachments %}
+            <div class="order-detail-content-body rc-order-attachment-account">
+                {% block page_account_order_rc_attachments_header %}
+                    <h3 class="card-title small">
+                        {{ 'rcOrderAttachment.account.heading'|trans|sw_sanitize }}
+                    </h3>
+                {% endblock %}
+
+                {% block page_account_order_rc_attachments_list %}
+                    <ul class="list-unstyled rc-order-attachment-account-list">
+                        {% for attachment in rcAttachmentList.attachments %}
+                            {% set sizeKb = (attachment.fileSize / 1024)|round(1) %}
+                            <li class="rc-order-attachment-account-item d-flex align-items-center gap-2 py-1">
+                                <span class="icon icon-xs">{% sw_icon 'file' %}</span>
+                                <a href="{{ path('frontend.rc-order-attachment.account-download', { attachmentId: attachment.id }) }}"
+                                   rel="noopener"
+                                   download="{{ attachment.originalFileName }}">
+                                    {{ attachment.originalFileName|sw_sanitize }}
+                                </a>
+                                <small class="text-muted">({{ sizeKb }} KB)</small>
+                                <small class="text-muted ms-auto">
+                                    {{ attachment.createdAt|format_datetime('medium', 'short', locale=app.request.locale) }}
+                                </small>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% endblock %}
+            </div>
+        {% endblock %}
+    {% endif %}
+{% endblock %}

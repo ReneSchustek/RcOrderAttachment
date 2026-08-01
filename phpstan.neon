@@ -1,0 +1,65 @@
+parameters:
+    level: 8
+    paths:
+        - src
+        - tests
+    excludePaths:
+        - vendor
+    bootstrapFiles:
+        - vendor/autoload.php
+    ignoreErrors:
+        # Shopware-6.8-Vorbereitung: `Field::addFlags()` bekommt in 6.8 einen
+        # `static`-Return-Type. Der Aufruf in OrderAttachmentDefinition.php
+        # ist unverändert korrekt — der Deprecation-Hinweis löst sich mit der
+        # 6.8-Min-Version-Migration auf. Vorher nicht refactorn (YAGNI).
+        -
+            message: '#Call to deprecated method addFlags\(\) of class Shopware\\Core\\Framework\\DataAbstractionLayer\\Field\\Field#'
+            path: src/Core/Content/OrderAttachment/OrderAttachmentDefinition.php
+
+        # `SystemConfigService::set()` traegt `reason:new-optional-parameter` — die
+        # Methode bleibt, sie bekommt in 6.8 nur einen zusaetzlichen optionalen
+        # Parameter `$silent`. Es gibt heute nichts, worauf man migrieren koennte:
+        # `setMultiple()` traegt dieselbe Markierung, und der Parameter laesst sich
+        # gegen die 6.7-Signatur nicht uebergeben. Geprueft und bewusst hingenommen;
+        # faellt mit der Anhebung auf 6.8 als Mindestversion von selbst weg.
+        # Bewusst auf die Testpfade begrenzt — im Produktivcode steht kein Aufruf.
+        -
+            message: '#Call to deprecated method set\(\) of class Shopware\\Core\\System\\SystemConfig\\SystemConfigService#'
+            path: tests/Integration/ScheduledTask/*.php
+
+    banned_code:
+        nodes:
+            # Code-Injection
+            -
+                type: Expr_Eval
+                functions: null
+            -
+                type: Expr_FuncCall
+                functions:
+                    # Code- und Command-Injection
+                    - unserialize
+                    - exec
+                    - shell_exec
+                    - system
+                    - passthru
+                    - extract
+                    # Schwache Hashes
+                    - md5
+                    - sha1
+                    # Nicht kryptographisch sicher — random_int() verwenden
+                    - rand
+                    - mt_rand
+                    # Debug-Ausgabe
+                    - var_dump
+                    - print_r
+                    - dd
+                    - dump
+                    # Logging — PSR-3-Logger verwenden
+                    - error_log
+        use_from_tests: false
+        non_ignorable: true
+
+includes:
+    - vendor/ekino/phpstan-banned-code/extension.neon
+    - vendor/phpstan/phpstan-strict-rules/rules.neon
+    - vendor/phpstan/phpstan-deprecation-rules/rules.neon

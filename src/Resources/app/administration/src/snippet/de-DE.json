@@ -1,0 +1,15 @@
+{
+    "rc-order-attachment": {
+        "list": {
+            "cardTitle": "Bestell-Anhänge",
+            "empty": "Zu dieser Bestellung wurden keine Dateien hochgeladen.",
+            "columnName": "Dateiname",
+            "columnSize": "Größe",
+            "columnType": "Typ",
+            "columnUploaded": "Hochgeladen",
+            "download": "Herunterladen",
+            "loadError": "Die Bestell-Anhänge konnten nicht geladen werden.",
+            "downloadError": "Der Anhang konnte nicht heruntergeladen werden."
+        }
+    }
+}

@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="https://raw.githubusercontent.com/shopware/platform/trunk/src/Core/System/SystemConfig/Schema/config.xsd">
+
+    <card>
+        <title lang="de-DE">Allgemein</title>
+        <title lang="en-GB">General</title>
+
+        <input-field type="bool">
+            <name>enabled</name>
+            <label lang="de-DE">Plugin aktiv</label>
+            <label lang="en-GB">Plugin enabled</label>
+            <helpText lang="de-DE">Aktiviert die Upload-Funktion auf der Bestell-Bestätigungs-Seite.</helpText>
+            <helpText lang="en-GB">Enables the upload feature on the checkout confirm page.</helpText>
+            <defaultValue>true</defaultValue>
+        </input-field>
+
+        <input-field type="bool">
+            <name>required</name>
+            <label lang="de-DE">Upload Pflichtfeld</label>
+            <label lang="en-GB">Upload mandatory</label>
+            <helpText lang="de-DE">Wenn aktiv, muss der Kunde mindestens eine Datei hochladen, bevor die Bestellung abgeschlossen werden kann.</helpText>
+            <helpText lang="en-GB">If enabled, the customer must upload at least one file before the order can be completed.</helpText>
+            <defaultValue>false</defaultValue>
+        </input-field>
+    </card>
+
+    <card>
+        <title lang="de-DE">Datei-Limits</title>
+        <title lang="en-GB">File limits</title>
+
+        <input-field type="int">
+            <name>maxFiles</name>
+            <label lang="de-DE">Maximale Anzahl Dateien pro Bestellung</label>
+            <label lang="en-GB">Maximum number of files per order</label>
+            <helpText lang="de-DE">Begrenzt die Anzahl Anhänge je Bestellung (1–50).</helpText>
+            <helpText lang="en-GB">Limits the number of attachments per order (1–50).</helpText>
+            <defaultValue>5</defaultValue>
+        </input-field>
+
+        <input-field type="int">
+            <name>maxFileSizeKb</name>
+            <label lang="de-DE">Maximale Größe je Datei (KB)</label>
+            <label lang="en-GB">Maximum size per file (KB)</label>
+            <helpText lang="de-DE">Größenlimit je einzelner Datei in Kilobyte. Default 10 MB (10240) deckt typische Smartphone-Fotos ab. Achtung: PHP-Limits (upload_max_filesize, post_max_size) bilden den harten Deckel.</helpText>
+            <helpText lang="en-GB">Size limit per individual file in kilobytes. Default 10 MB (10240) covers typical smartphone photos. Note: PHP limits (upload_max_filesize, post_max_size) form the hard cap.</helpText>
+            <defaultValue>10240</defaultValue>
+        </input-field>
+
+        <input-field type="int">
+            <name>maxTotalSizeKb</name>
+            <label lang="de-DE">Maximale Gesamt-Größe je Bestellung (KB)</label>
+            <label lang="en-GB">Maximum total size per order (KB)</label>
+            <helpText lang="de-DE">Summe aller Anhänge je Bestellung in Kilobyte. Default 40 MB (40960).</helpText>
+            <helpText lang="en-GB">Sum of all attachments per order in kilobytes. Default 40 MB (40960).</helpText>
+            <defaultValue>40960</defaultValue>
+        </input-field>
+
+        <input-field type="int">
+            <name>rateLimitPerMinute</name>
+            <label lang="de-DE">Rate-Limit: Uploads pro Minute je Session</label>
+            <label lang="en-GB">Rate limit: uploads per minute per session</label>
+            <helpText lang="de-DE">Begrenzt die Anzahl der Upload-Versuche je Customer-Session pro Minute. Schutz vor Bot-DoS. 0 deaktiviert. Default: 30.</helpText>
+            <helpText lang="en-GB">Limits upload attempts per customer session per minute. Protects against bot DoS. 0 disables. Default: 30.</helpText>
+            <defaultValue>30</defaultValue>
+        </input-field>
+
+        <input-field type="bool">
+            <name>stripExifFromImages</name>
+            <label lang="de-DE">EXIF-Metadaten aus Bildern entfernen</label>
+            <label lang="en-GB">Strip EXIF metadata from images</label>
+            <helpText lang="de-DE">Entfernt EXIF-Metadaten (GPS-Koordinaten, Geräte-Info, Aufnahmezeit) aus JPEG/PNG/WebP/HEIC vor der Speicherung. DSGVO-relevant — Smartphone-Fotos enthalten standardmäßig GPS-Daten des Customers. Standard: aktiv. Setzt installierte GD- oder Imagick-Erweiterung voraus.</helpText>
+            <helpText lang="en-GB">Removes EXIF metadata (GPS coordinates, device info, capture time) from JPEG/PNG/WebP/HEIC before storage. GDPR-relevant — smartphone photos contain GPS data by default. Default: enabled. Requires installed GD or Imagick extension.</helpText>
+            <defaultValue>true</defaultValue>
+        </input-field>
+
+        <input-field type="text">
+            <name>allowedExtensions</name>
+            <label lang="de-DE">Erlaubte Datei-Endungen (kommagetrennt)</label>
+            <label lang="en-GB">Allowed file extensions (comma-separated)</label>
+            <helpText lang="de-DE">Whitelist erlaubter Endungen, kleingeschrieben, ohne Punkt. Default: pdf,jpg,jpeg,png,webp,heic,heif (heic/heif sind iPhone-Foto-Formate). Eine harte Blacklist gefährlicher Endungen (php, html, svg, exe, …) gilt zusätzlich und ist nicht überschreibbar.</helpText>
+            <helpText lang="en-GB">Whitelist of allowed extensions, lowercase, no dot. Default: pdf,jpg,jpeg,png,webp,heic,heif (heic/heif are iPhone photo formats). A hard blacklist of dangerous extensions (php, html, svg, exe, …) applies additionally and cannot be overridden.</helpText>
+            <defaultValue>pdf,jpg,jpeg,png,webp,heic,heif</defaultValue>
+        </input-field>
+    </card>
+
+    <card>
+        <title lang="de-DE">Aufbewahrung</title>
+        <title lang="en-GB">Retention</title>
+
+        <input-field type="int">
+            <name>orphanRetentionHours</name>
+            <label lang="de-DE">Verwaiste Uploads löschen nach (Stunden)</label>
+            <label lang="en-GB">Delete orphaned uploads after (hours)</label>
+            <helpText lang="de-DE">Hochgeladene Dateien, die nicht zu einer abgeschlossenen Bestellung verlinkt wurden, werden nach dieser Zeit automatisch gelöscht. Default: 24 Stunden.</helpText>
+            <helpText lang="en-GB">Uploaded files that were not linked to a completed order are deleted automatically after this time. Default: 24 hours.</helpText>
+            <defaultValue>24</defaultValue>
+        </input-field>
+
+        <input-field type="int">
+            <name>attachmentRetentionDays</name>
+            <label lang="de-DE">Bestell-Anhänge löschen nach (Tagen, 0 = nie)</label>
+            <label lang="en-GB">Delete order attachments after (days, 0 = never)</label>
+            <helpText lang="de-DE">Anhänge werden nach dieser Frist automatisch gelöscht, gerechnet ab dem Upload und <b>unabhängig vom Bestellstatus</b> (DSGVO-Datensparsamkeit). 0 deaktiviert die automatische Löschung.</helpText>
+            <helpText lang="en-GB">Attachments of completed orders are automatically deleted after this period (GDPR retention). 0 disables automatic deletion.</helpText>
+            <defaultValue>180</defaultValue>
+        </input-field>
+    </card>
+
+    <card>
+        <title lang="de-DE">E-Mail</title>
+        <title lang="en-GB">Email</title>
+
+        <input-field type="bool">
+            <name>attachToConfirmationMail</name>
+            <label lang="de-DE">An Bestätigungs-Mail anhängen</label>
+            <label lang="en-GB">Attach to confirmation email</label>
+            <helpText lang="de-DE">Hängt die hochgeladenen Dateien automatisch an die Bestell-Bestätigungs-E-Mail an.</helpText>
+            <helpText lang="en-GB">Automatically attaches uploaded files to the order confirmation email.</helpText>
+            <defaultValue>true</defaultValue>
+        </input-field>
+
+        <input-field type="text">
+            <name>mailTemplateWhitelist</name>
+            <label lang="de-DE">Mail-Template-Technical-Names (kommagetrennt)</label>
+            <label lang="en-GB">Mail template technical names (comma-separated)</label>
+            <helpText lang="de-DE">Anhänge werden nur an Mails dieser Mail-Template-Types gehängt (kommagetrennt). Leer oder nur ungültige Werte fallen sicher auf den Default order_confirmation_mail zurück — das verhindert Mehrfach-Versand bei Order-State-Changes (Versand, Storno).</helpText>
+            <helpText lang="en-GB">Attachments are added only to mails of these template types (comma-separated). Empty or only invalid values safely fall back to the default order_confirmation_mail — this prevents duplicate sends on order state changes (shipping, cancellation).</helpText>
+            <defaultValue>order_confirmation_mail</defaultValue>
+        </input-field>
+
+        <input-field type="bool">
+            <name>enableMailRetry</name>
+            <label lang="de-DE">Fehlgeschlagene Mail-Anhänge erneut versuchen</label>
+            <label lang="en-GB">Retry failed mail attachments</label>
+            <helpText lang="de-DE">Opt-in. Wenn aktiv: bei mindestens einem fehlgeschlagenen Anhang in der Bestätigungs-Mail wird über die Message-Queue mit Exponential-Backoff ein Retry geplant. Voraussetzung: aktiver Worker. Default: aus.</helpText>
+            <helpText lang="en-GB">Opt-in. When enabled, at least one failed attachment in the confirmation mail triggers a retry via the message queue with exponential backoff. Requires an active worker. Default: off.</helpText>
+            <defaultValue>false</defaultValue>
+        </input-field>
+    </card>
+</config>

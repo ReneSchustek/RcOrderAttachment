@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality:
+    name: Code-Qualität (PHP 8.3)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Quellcode auschecken
+        uses: actions/checkout@v5
+
+      - name: PHP 8.3 einrichten
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, xml, ctype, iconv, intl, pdo, pdo_mysql, curl, zip
+          tools: composer:v2
+
+      - name: Composer-Cache laden
+        uses: actions/cache@v5
+        with:
+          path: vendor
+          key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Abhängigkeiten installieren
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Security-Audit
+        run: composer audit
+
+      - name: Code-Style prüfen
+        run: composer cs-check
+
+      - name: Statische Analyse (PHPStan Level 8 + banned-code + strict)
+        run: composer phpstan
+
+      # Regel-Wächter. Läuft ohne Shopware-Kernel und ist damit im
+      # Plugin-Standalone-Checkout tatsächlich wirksam.
+      #
+      # Vorgeschichte: hier standen Schritte `vendor/bin/console lint:twig` und
+      # `lint:xml`. `vendor/bin/console` existiert in einem Plugin-Repository nie
+      # (die Shopware-Console liegt im Shop, nicht im Plugin), also sprang immer
+      # der `else`-Zweig an und der Schritt meldete grün, ohne irgendetwas zu
+      # prüfen. Genau dadurch blieb der Aufruf einer in Shopware 6.5 entfernten
+      # Twig-Funktion (`sw_csrf`) unentdeckt, bis er die Confirm-Page zerlegte.
+      - name: Regel-Wächter (entfernte APIs, Error-Suppression, XML/JSON)
+        run: |
+          set -euo pipefail
+          fail=0
+
+          echo "── Entfernte Shopware-APIs (>= 6.5) ──"
+          # sw_csrf + CSRF-Layer wurden mit Shopware 6.5 ersatzlos entfernt.
+          if grep -rn --include='*.twig' --include='*.js' -E '\bsw_csrf\s*\(' src; then
+            echo "FEHLER: sw_csrf existiert seit Shopware 6.5 nicht mehr (Twig-Compile-Fehler)."
+            fail=1
+          fi
+          # Nur echte Code-Nutzung (Import/Instanziierung) — ein Kommentar, der
+          # erklärt, warum es die Klasse nicht mehr gibt, ist erwünscht.
+          if grep -rn --include='*.php' -E '^[[:space:]]*use[[:space:]].*CsrfPlaceholderHandler|new[[:space:]]+CsrfPlaceholderHandler' src; then
+            echo "FEHLER: CsrfPlaceholderHandler existiert seit Shopware 6.5 nicht mehr."
+            fail=1
+          fi
+
+          echo "── Error-Suppression-Operator ──"
+          # Trifft `@fopen(`, `@unlink(` usw., nicht aber Mail-Adressen,
+          # PHPDoc-Tags (`@param`) oder Attribute (`#[...]`).
+          if grep -rn --include='*.php' -E '(^|[^a-zA-Z0-9_$"'"'"'/*])@[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*\(' src; then
+            echo "FEHLER: @-Error-Suppression ist verboten — Fehler gehören behandelt, nicht unterdrückt."
+            fail=1
+          fi
+
+          echo "── XML- und JSON-Wohlgeformtheit ──"
+          for f in $(find src -name '*.xml'); do
+            php -r 'exit(simplexml_load_file($argv[1]) === false ? 1 : 0);' "$f" \
+              || { echo "FEHLER: $f ist kein wohlgeformtes XML"; fail=1; }
+          done
+          for f in $(find src -name '*.json'); do
+            php -r 'json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR);' "$f" \
+              || { echo "FEHLER: $f ist kein valides JSON"; fail=1; }
+          done
+
+          if [ "$fail" -ne 0 ]; then
+            echo "Regel-Wächter hat Verstöße gefunden."
+            exit 1
+          fi
+          echo "Regel-Wächter: keine Verstöße."
+
+      - name: Tests ausführen
+        run: composer test

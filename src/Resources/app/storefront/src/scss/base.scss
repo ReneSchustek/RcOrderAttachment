@@ -1,0 +1,110 @@
+/* RcOrderAttachment — Confirm-Page Upload + Account-Bereich */
+
+.rc-order-attachment {
+    margin-top: 1rem;
+
+    /* Sichtbarer Tastatur-Fokus — WCAG 2.4.7 (BFSG-Pflicht). */
+    :focus-visible {
+        outline: 2px solid var(--bs-primary, #0d6efd);
+        outline-offset: 2px;
+    }
+}
+
+.rc-order-attachment-limits {
+    margin-bottom: 0.5rem;
+}
+
+.rc-order-attachment-list {
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    overflow: hidden;
+
+    .list-group-item {
+        background-color: transparent;
+    }
+}
+
+.rc-order-attachment-item-name {
+    word-break: break-all;
+    font-weight: 500;
+}
+
+.rc-order-attachment-progress {
+    margin-top: 0.5rem;
+}
+
+.rc-order-attachment-remove {
+    color: var(--bs-danger);
+    text-decoration: none;
+    padding: 0.25rem 0.5rem;
+    min-height: 24px; /* WCAG 2.5.8 Touch-Ziel-Mindestgröße */
+    min-width: 24px;
+
+    /* Auf Touch-Geräten die volle Zielgröße nach WCAG 2.5.5 (44 px). Die Schaltfläche sitzt
+       direkt neben dem Dateinamen, und ein Fehlgriff LÖSCHT den Anhang — auf einem Handy ist
+       das der teuerste Vertipper der Seite. Am Zeigegerät bleibt es bei den 24 px aus 2.5.8:
+       dort ist die Treffsicherheit höher und die Zeile bleibt kompakt.
+
+       `pointer: coarse` statt `hover: none`, weil hier die Zeigegenauigkeit zählt und nicht die
+       Frage, ob das Gerät einen Hover-Zustand kennt. */
+    @media (pointer: coarse) {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 44px;
+        min-width: 44px;
+    }
+
+    &:hover,
+    &:focus {
+        color: var(--bs-danger);
+        text-decoration: underline;
+    }
+
+    &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+}
+
+/* Hint-Text wird auf Touch-Geräten ausgeblendet — „Drop file here" ist auf
+   Mobile irreführend (kein Drag&Drop). */
+@media (hover: none) {
+    [data-rc-order-attachment-hint] {
+        display: none;
+    }
+}
+
+/* WCAG 2.3.3 / 2.2.2 — Respect für `prefers-reduced-motion`. */
+@media (prefers-reduced-motion: reduce) {
+    .rc-order-attachment .progress-bar-animated {
+        animation: none;
+    }
+}
+
+/* Account-Bereich-Sicht */
+.rc-order-attachment-account {
+    border-top: 1px solid var(--bs-border-color);
+    padding-top: 1rem;
+    margin-top: 1rem;
+}
+
+.rc-order-attachment-account-list {
+    margin-bottom: 0;
+}
+
+.rc-order-attachment-account-item {
+    border-bottom: 1px solid var(--bs-border-color-translucent, rgba(0, 0, 0, 0.05));
+
+    &:last-child {
+        border-bottom: 0;
+    }
+}
+
+/* Datenschutz-Hinweis dezent halten. */
+.rc-order-attachment-privacy {
+    summary {
+        cursor: pointer;
+        user-select: none;
+    }
+}

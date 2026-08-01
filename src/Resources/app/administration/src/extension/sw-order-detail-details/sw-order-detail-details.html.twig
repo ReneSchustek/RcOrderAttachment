@@ -1,0 +1,10 @@
+{% block sw_order_detail_details_custom_fields %}
+    {% parent %}
+
+    {% block rc_order_attachment_order_detail_card %}
+    <rc-order-attachment-list
+        v-if="order"
+        :order-id="order.id"
+    />
+    {% endblock %}
+{% endblock %}
