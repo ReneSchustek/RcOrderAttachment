@@ -52,7 +52,7 @@ function pluginMit(felder = {}) {
         extensionNotAllowed: 'Endung nicht erlaubt',
         fileSizeExceeded: 'Datei zu gross',
         fileCountExceeded: 'Zu viele Dateien',
-        totalSizeExceeded: 'Gesamtgroesse ueberschritten',
+        totalSizeExceeded: 'Gesamtgröße überschritten',
     };
 
     p.gezeigterFehler = null;
@@ -108,7 +108,7 @@ describe('Vorprüfung im Browser', () => {
     test('weist ab, wenn die Gesamtgröße überschritten würde', () => {
         const p = pluginMit({ maxTotalSizeBytes: 1000, totalSize: 900 });
         assert.equal(p._preValidate(datei('rest.pdf', 200)), false);
-        assert.equal(p.gezeigterFehler, 'Gesamtgroesse ueberschritten');
+        assert.equal(p.gezeigterFehler, 'Gesamtgröße überschritten');
     });
 
     test('ohne gesetzte Grenzen wird nichts abgewiesen', () => {

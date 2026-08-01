@@ -12,7 +12,7 @@
         </service>
 
         <!-- Konfiguration. Public, damit der Integration-Test die effektive
-             Konfiguration gegenpruefen kann (Nicht-Vakuitaets-Assertion). -->
+             Konfiguration gegenprüfen kann (Nicht-Vakuitäts-Assertion). -->
         <service id="Ruhrcoder\RcOrderAttachment\Service\Config\PluginConfigProvider" public="true">
             <argument type="service" id="Shopware\Core\System\SystemConfig\SystemConfigService"/>
         </service>
@@ -21,7 +21,7 @@
         <service id="Ruhrcoder\RcOrderAttachment\Installer\MediaFolderInstaller">
             <argument type="service" id="media_folder.repository"/>
             <argument type="service" id="media_folder_configuration.repository"/>
-            <!-- Merkt sich die Ordner-ID: Der Ordner wurde frueher nur ueber den Namen gefunden,
+            <!-- Merkt sich die Ordner-ID: Der Ordner wurde früher nur über den Namen gefunden,
                  eine Umbenennung im Medien-Manager legte Cleanup und Deinstallation still. -->
             <argument type="service" id="Doctrine\DBAL\Connection"/>
         </service>
@@ -65,7 +65,7 @@
         </service>
 
         <!-- Lese-/Schreib-Services -->
-        <!-- Public, damit Integration-Tests den Service direkt aus dem Container holen koennen. -->
+        <!-- Public, damit Integration-Tests den Service direkt aus dem Container holen können. -->
         <service id="Ruhrcoder\RcOrderAttachment\Service\OrderAttachmentLoader" public="true">
             <argument type="service" id="rc_order_attachment.repository"/>
         </service>
@@ -77,7 +77,7 @@
             <argument type="service" id="Ruhrcoder\RcOrderAttachment\Service\Filename\FilenameSanitizer"/>
             <argument type="service" id="logger"/>
         </service>
-        <!-- Public-Alias, damit Integration-Tests `getContainer()->get(OrderAttachmentManagerInterface::class)` aufloesen koennen. -->
+        <!-- Public-Alias, damit Integration-Tests `getContainer()->get(OrderAttachmentManagerInterface::class)` auflösen können. -->
         <service id="Ruhrcoder\RcOrderAttachment\Service\OrderAttachmentManagerInterface"
                  alias="Ruhrcoder\RcOrderAttachment\Service\OrderAttachmentManager"
                  public="true"/>
@@ -173,9 +173,9 @@
         <service id="Ruhrcoder\RcOrderAttachment\Service\Mail\MailAttachmentStatusTrackerInterface"
                  alias="Ruhrcoder\RcOrderAttachment\Service\Mail\MailAttachmentStatusTracker"/>
 
-        <!-- Loest `data['templateId']` zum Mail-Template-Type-`technicalName` auf.
+        <!-- Löst `data['templateId']` zum Mail-Template-Type-`technicalName` auf.
              Shopware liefert im MailBeforeValidateEvent keinen `mailTemplate`-Key —
-             ohne diesen Resolver koennte die Whitelist nur Flow-Event-Namen sehen.
+             ohne diesen Resolver könnte die Whitelist nur Flow-Event-Namen sehen.
              kernel.reset leert den Lookup-Cache pro Request (Worker-Mode). -->
         <service id="Ruhrcoder\RcOrderAttachment\Service\Mail\MailTemplateTypeResolver">
             <argument type="service" id="mail_template.repository"/>
@@ -189,8 +189,8 @@
         <!-- Public, damit der Integration-Test den Subscriber mit dem echten
              Service-Graph aus dem Container holen kann (siehe
              tests/Integration/Storefront/Subscriber/). Direkt aufrufen statt
-             ueber den event_dispatcher: MailBeforeValidateEvent ist FlowEventAware,
-             ein Dispatch wuerde die Flow-Ausfuehrung antriggern. -->
+             über den event_dispatcher: MailBeforeValidateEvent ist FlowEventAware,
+             ein Dispatch würde die Flow-Ausführung antriggern. -->
         <service id="Ruhrcoder\RcOrderAttachment\Storefront\Subscriber\MailBeforeValidateSubscriber" public="true">
             <argument type="service" id="Ruhrcoder\RcOrderAttachment\Service\OrderAttachmentLoader"/>
             <argument type="service" id="Shopware\Core\Content\Media\MediaService"/>

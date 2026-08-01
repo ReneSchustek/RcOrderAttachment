@@ -11,11 +11,11 @@ use Shopware\Core\Framework\Test\TestCaseBase\IntegrationTestBehaviour;
 use Shopware\Core\Framework\Uuid\Uuid;
 
 /**
- * Gemeinsame Fixtures fuer Integration-Tests.
+ * Gemeinsame Fixtures für Integration-Tests.
  *
  * Eine Bestellung anzulegen braucht in Shopware ein gutes Dutzend Pflichtfelder samt
  * Rundungs-Konfiguration und einer Rechnungsadresse, die im selben Schreibvorgang entstehen
- * muss. Das gehoert einmal an eine Stelle und nicht in jede Testklasse kopiert.
+ * muss. Das gehört einmal an eine Stelle und nicht in jede Testklasse kopiert.
  */
 abstract class IntegrationTestCase extends TestCase
 {
@@ -37,8 +37,8 @@ abstract class IntegrationTestCase extends TestCase
         $orderId = Uuid::randomHex();
         // Die Rechnungsadresse muss im selben Schreibvorgang entstehen und von
         // `billingAddressId` referenziert werden. Eine lose UUID ohne passenden Datensatz
-        // laesst den Fremdschluessel greifen — der Test brach dann mit einem Fehler ab,
-        // statt das zu pruefen, wofuer er da ist.
+        // lässt den Fremdschlüssel greifen — der Test brach dann mit einem Fehler ab,
+        // statt das zu prüfen, wofür er da ist.
         $billingAddressId = Uuid::randomHex();
         static::repository('order.repository')->create([[
             'id' => $orderId,
@@ -64,7 +64,7 @@ abstract class IntegrationTestCase extends TestCase
                 'calculatedTaxes' => [],
                 'taxRules' => [],
             ],
-            // Shopware 6.7+ verlangt CashRoundingConfig fuer Order-Entity (Pflichtfelder).
+            // Shopware 6.7+ verlangt CashRoundingConfig für Order-Entity (Pflichtfelder).
             'totalRounding' => [
                 'decimals' => 2,
                 'interval' => 0.01,

@@ -42,7 +42,7 @@ final class MediaFolderInstaller
      * @param EntityRepository<MediaFolderCollection> $mediaFolderRepository
      * @param EntityRepository<MediaFolderConfigurationCollection> $mediaFolderConfigurationRepository
      * @param Connection|null $connection Der Vermerk wird direkt in `system_config` geschrieben und
-     *        gelesen. Nicht ueber den SystemConfigService: Dessen Schreib-Methoden sind in 6.7
+     *        gelesen. Nicht über den SystemConfigService: Dessen Schreib-Methoden sind in 6.7
      *        als veraltet markiert (kommender Parameter `silent`), und ein Wert, den nur das
      *        Plugin kennt, braucht weder Cache-Invalidierung noch Konfigurations-Event. Im
      *        Lifecycle steht die Verbindung nicht immer bereit -- fehlt sie, greift die

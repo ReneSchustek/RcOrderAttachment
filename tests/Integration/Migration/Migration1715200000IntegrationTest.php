@@ -14,9 +14,9 @@ use Shopware\Core\Framework\Test\TestCaseBase\KernelTestBehaviour;
  * alle erwarteten Spalten + Indizes + Foreign-Keys anlegt.
  *
  * Nutzt `KernelTestBehaviour` statt `IntegrationTestBehaviour`, weil die Tests
- * DDL-Statements (`CREATE TABLE IF NOT EXISTS`) ausfuehren — DDL committet in
+ * DDL-Statements (`CREATE TABLE IF NOT EXISTS`) ausführen — DDL committet in
  * MySQL implizit, was den Transaction-Wrap aus `IntegrationTestBehaviour`
- * sprengen wuerde (`tearDown::rollBack` findet keine offene Transaction).
+ * sprengen würde (`tearDown::rollBack` findet keine offene Transaction).
  */
 final class Migration1715200000IntegrationTest extends TestCase
 {
@@ -101,9 +101,9 @@ final class Migration1715200000IntegrationTest extends TestCase
         $migration = new Migration1715200000CreateOrderAttachmentTable();
 
         // Ein Datensatz vor dem zweiten Lauf: Idempotenz heisst nicht nur „wirft nicht",
-        // sondern auch „raeumt nichts weg". Ein `DROP TABLE IF EXISTS` vor dem `CREATE`
-        // waere ebenfalls wiederholbar — und wuerde bei jedem Plugin-Update alle Anhaenge
-        // loeschen. `assertTrue(true)` haette das durchgewinkt.
+        // sondern auch „räumt nichts weg". Ein `DROP TABLE IF EXISTS` vor dem `CREATE`
+        // wäre ebenfalls wiederholbar — und würde bei jedem Plugin-Update alle Anhänge
+        // löschen. `assertTrue(true)` hätte das durchgewinkt.
         $spuren = $connection->fetchOne('SELECT COUNT(*) FROM `rc_order_attachment`');
 
         $migration->update($connection);
@@ -112,7 +112,7 @@ final class Migration1715200000IntegrationTest extends TestCase
         self::assertSame(
             $spuren,
             $connection->fetchOne('SELECT COUNT(*) FROM `rc_order_attachment`'),
-            'die Migration darf bestehende Anhaenge nicht antasten',
+            'die Migration darf bestehende Anhänge nicht antasten',
         );
 
         $struktur = $connection->fetchAllAssociative('SHOW COLUMNS FROM `rc_order_attachment`');

@@ -24,7 +24,7 @@ enum ValidationCode: string
     case FILE_COUNT_EXCEEDED = 'fileCountExceeded';
     case DANGEROUS_CONTENT_DETECTED = 'dangerousContentDetected';
     /**
-     * Kein Session-Kontext: Die Datei liesse sich spaeter keiner Bestellung zuordnen.
+     * Kein Session-Kontext: Die Datei liesse sich später keiner Bestellung zuordnen.
      * Der Upload wird deshalb abgelehnt, statt Erfolg zu melden und die Datei zu verlieren.
      */
     case SESSION_UNAVAILABLE = 'sessionUnavailable';

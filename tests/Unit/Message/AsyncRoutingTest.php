@@ -34,7 +34,7 @@ final class AsyncRoutingTest extends TestCase
     {
         return [
             'Mail-Anhang-Retry' => [RetryFailedMailAttachmentsMessage::class],
-            'Order-Verknuepfungs-Retry' => [RetryOrderAttachmentLinkMessage::class],
+            'Order-Verknüpfungs-Retry' => [RetryOrderAttachmentLinkMessage::class],
         ];
     }
 

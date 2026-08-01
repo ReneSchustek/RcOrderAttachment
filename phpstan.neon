@@ -16,12 +16,12 @@ parameters:
             message: '#Call to deprecated method addFlags\(\) of class Shopware\\Core\\Framework\\DataAbstractionLayer\\Field\\Field#'
             path: src/Core/Content/OrderAttachment/OrderAttachmentDefinition.php
 
-        # `SystemConfigService::set()` traegt `reason:new-optional-parameter` — die
+        # `SystemConfigService::set()` trägt `reason:new-optional-parameter` — die
         # Methode bleibt, sie bekommt in 6.8 nur einen zusaetzlichen optionalen
-        # Parameter `$silent`. Es gibt heute nichts, worauf man migrieren koennte:
-        # `setMultiple()` traegt dieselbe Markierung, und der Parameter laesst sich
-        # gegen die 6.7-Signatur nicht uebergeben. Geprueft und bewusst hingenommen;
-        # faellt mit der Anhebung auf 6.8 als Mindestversion von selbst weg.
+        # Parameter `$silent`. Es gibt heute nichts, worauf man migrieren könnte:
+        # `setMultiple()` trägt dieselbe Markierung, und der Parameter lässt sich
+        # gegen die 6.7-Signatur nicht übergeben. Geprüft und bewusst hingenommen;
+        # fällt mit der Anhebung auf 6.8 als Mindestversion von selbst weg.
         # Bewusst auf die Testpfade begrenzt — im Produktivcode steht kein Aufruf.
         -
             message: '#Call to deprecated method set\(\) of class Shopware\\Core\\System\\SystemConfig\\SystemConfigService#'

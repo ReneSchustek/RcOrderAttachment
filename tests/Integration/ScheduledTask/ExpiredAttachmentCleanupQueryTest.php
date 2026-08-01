@@ -74,8 +74,8 @@ final class ExpiredAttachmentCleanupQueryTest extends IntegrationTestCase
 
         $this->handler->run();
 
-        self::assertFalse($this->anhangExistiert($altesAnhang), 'aelter als 180 Tage muss weg');
-        self::assertTrue($this->anhangExistiert($jungerAnhang), 'juenger als 180 Tage muss bleiben');
+        self::assertFalse($this->anhangExistiert($altesAnhang), 'älter als 180 Tage muss weg');
+        self::assertTrue($this->anhangExistiert($jungerAnhang), 'jünger als 180 Tage muss bleiben');
         self::assertTrue($this->mediumExistiert($jungesMedium), 'und sein Medium auch');
     }
 
@@ -98,11 +98,11 @@ final class ExpiredAttachmentCleanupQueryTest extends IntegrationTestCase
         self::assertFalse($this->anhangExistiert($abgelaufen), 'der abgelaufene Anhang geht');
         self::assertTrue(
             $this->mediumExistiert($geteiltesMedium),
-            'das geteilte Medium muss bleiben, solange eine gueltige Bestellung darauf zeigt',
+            'das geteilte Medium muss bleiben, solange eine gültige Bestellung darauf zeigt',
         );
         self::assertTrue(
             $this->anhangExistiert($nochGueltig),
-            'und damit auch der Anhang der anderen Bestellung — sonst haette der Cascade zugeschlagen',
+            'und damit auch der Anhang der anderen Bestellung — sonst hätte der Cascade zugeschlagen',
         );
     }
 
@@ -123,7 +123,7 @@ final class ExpiredAttachmentCleanupQueryTest extends IntegrationTestCase
 
         $this->handler->run();
 
-        self::assertTrue($this->anhangExistiert($anhang), '0 Tage heisst: nie loeschen');
+        self::assertTrue($this->anhangExistiert($anhang), '0 Tage heisst: nie löschen');
         self::assertTrue($this->mediumExistiert($medium));
     }
 
@@ -148,7 +148,7 @@ final class ExpiredAttachmentCleanupQueryTest extends IntegrationTestCase
 
         self::assertTrue(
             $this->anhangExistiert($anhang),
-            'nur die Live-Version der Bestellung wird aufgeraeumt',
+            'nur die Live-Version der Bestellung wird aufgeräumt',
         );
     }
 

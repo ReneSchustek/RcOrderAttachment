@@ -222,20 +222,20 @@ final class OrderAttachmentUploadServiceRemoveTest extends TestCase
 
                 // IdSearchResult erwartet die Treffer nach ihrem Schlüssel abgelegt,
                 // nicht als fortlaufende Liste.
-                $eintraege = [];
+                $einträge = [];
                 foreach ($treffer > 0 ? range(1, $treffer) : [] as $i) {
-                    $schluessel = \sprintf('%032d', $i);
-                    $eintraege[$schluessel] = ['primaryKey' => $schluessel, 'data' => []];
+                    $schlüssel = \sprintf('%032d', $i);
+                    $einträge[$schlüssel] = ['primaryKey' => $schlüssel, 'data' => []];
                 }
 
                 // PHP macht aus einem rein numerischen Zeichenketten-Schlüssel keinen
-                // Ganzzahl-Schluessel, solange führende Nullen dranstehen; die Analyse
+                // Ganzzahl-Schlüssel, solange führende Nullen dranstehen; die Analyse
                 // sieht das nicht und weitet den Typ auf int|string.
-                /** @var array<string, array{primaryKey: string, data: array<string, mixed>}> $eintraege */
+                /** @var array<string, array{primaryKey: string, data: array<string, mixed>}> $einträge */
 
                 return new IdSearchResult(
                     $treffer,
-                    $eintraege,
+                    $einträge,
                     $criteria,
                     $context,
                 );

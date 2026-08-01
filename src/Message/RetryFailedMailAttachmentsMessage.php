@@ -15,7 +15,7 @@ use Shopware\Core\Framework\MessageQueue\AsyncMessageInterface;
  *
  * Implementiert bewusst {@see AsyncMessageInterface}: Shopware routet damit nach `async`.
  * Ohne diese Zuordnung behandelt Symfony die Nachricht **synchron** — der `DelayStamp` des
- * Handlers waere wirkungslos, alle Versuche liefen im selben Request ab, und der
+ * Handlers wäre wirkungslos, alle Versuche liefen im selben Request ab, und der
  * Exponential-Backoff, der dem Storage Zeit zur Erholung geben soll, verpuffte in
  * Millisekunden. Genau so gemessen, bevor dieses Interface dran war.
  */

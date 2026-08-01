@@ -104,7 +104,7 @@ final class OrphanedAttachmentCleanupQueryTest extends IntegrationTestCase
 
         $this->handler->run();
 
-        self::assertTrue($this->existiert($frisch), 'ein laufender Upload darf nicht abgeraeumt werden');
+        self::assertTrue($this->existiert($frisch), 'ein laufender Upload darf nicht abgeräumt werden');
     }
 
     /**
@@ -120,8 +120,8 @@ final class OrphanedAttachmentCleanupQueryTest extends IntegrationTestCase
 
         $this->handler->run();
 
-        self::assertFalse($this->existiert($knappDrueber), 'aelter als 24 h muss weg');
-        self::assertTrue($this->existiert($knappDrunter), 'juenger als 24 h muss bleiben');
+        self::assertFalse($this->existiert($knappDrueber), 'älter als 24 h muss weg');
+        self::assertTrue($this->existiert($knappDrunter), 'jünger als 24 h muss bleiben');
     }
 
     /**
@@ -162,10 +162,10 @@ final class OrphanedAttachmentCleanupQueryTest extends IntegrationTestCase
 
         $this->handler->run();
 
-        self::assertFalse($this->existiert($alt), 'alte Waisen werden auch bei 0 abgeraeumt');
+        self::assertFalse($this->existiert($alt), 'alte Waisen werden auch bei 0 abgeräumt');
         self::assertTrue(
             $this->existiert($geradeEben),
-            'die Untergrenze von einer Stunde schuetzt den laufenden Upload',
+            'die Untergrenze von einer Stunde schützt den laufenden Upload',
         );
     }
 

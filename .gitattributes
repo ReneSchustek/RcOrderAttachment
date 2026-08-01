@@ -1,10 +1,10 @@
 # Verhindert CRLF-Drift auf Windows trotz core.autocrlf=true.
-# .editorconfig fordert LF fuer alle Textdateien; PHP CS Fixer schlaegt
+# .editorconfig fordert LF für alle Textdateien; PHP CS Fixer schlägt
 # sonst in der CI-Pipeline auf CRLF an.
 
 * text=auto eol=lf
 
-# Binaerdateien explizit ausnehmen
+# Binärdateien explizit ausnehmen
 *.png binary
 *.jpg binary
 *.jpeg binary

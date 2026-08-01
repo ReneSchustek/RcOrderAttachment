@@ -221,7 +221,7 @@ final class RcOrderAttachment extends Plugin
         $this->logger($container)?->error('rc_order_attachment.uninstall.cleanup_failed', [
             'stage' => $stage,
             'affected' => $affected,
-            'exception' => $exception?->getMessage() ?? 'Service nicht verfuegbar',
+            'exception' => $exception?->getMessage() ?? 'Service nicht verfügbar',
         ]);
     }
 
@@ -229,8 +229,8 @@ final class RcOrderAttachment extends Plugin
     {
         // Erst der Vermerk aus der Konfiguration, dann der Name. Wurde der Ordner im
         // Medien-Manager umbenannt, fand ihn die reine Namenssuche nicht mehr -- dann blieben
-        // Ordner und private Kundendateien beim Deinstallieren zurueck, obwohl das Plugin
-        // Loeschung zusagt.
+        // Ordner und private Kundendateien beim Deinstallieren zurück, obwohl das Plugin
+        // Löschung zusagt.
         $folderId = $connection->fetchOne(
             'SELECT JSON_UNQUOTE(JSON_EXTRACT(configuration_value, "$._value"))
              FROM `system_config` WHERE configuration_key = :key LIMIT 1',

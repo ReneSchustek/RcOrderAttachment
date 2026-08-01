@@ -158,7 +158,7 @@ final class OrderAttachmentManagerIntegrationTest extends TestCase
 
         // Echte zweite Order-Version anlegen — die `createVersion`-API schreibt
         // einen `(order_id, version_id)`-Eintrag in `order`, damit der FK des
-        // Draft-Anhangs greifen kann. Ohne diese Version wuerde der DAL-Insert
+        // Draft-Anhangs greifen kann. Ohne diese Version würde der DAL-Insert
         // mit Integrity-Constraint-Violation abbrechen.
         $draftVersionId = static::repository('order.repository')->createVersion($orderId, $this->context);
 
@@ -190,8 +190,8 @@ final class OrderAttachmentManagerIntegrationTest extends TestCase
         $orderId = Uuid::randomHex();
         // Die Rechnungsadresse muss im selben Schreibvorgang entstehen und von
         // `billingAddressId` referenziert werden. Eine lose UUID ohne passenden Datensatz
-        // laesst den Fremdschluessel greifen — der Test brach dann mit einem Fehler ab,
-        // statt das zu pruefen, wofuer er da ist.
+        // lässt den Fremdschlüssel greifen — der Test brach dann mit einem Fehler ab,
+        // statt das zu prüfen, wofür er da ist.
         $billingAddressId = Uuid::randomHex();
         static::repository('order.repository')->create([[
             'id' => $orderId,
@@ -217,7 +217,7 @@ final class OrderAttachmentManagerIntegrationTest extends TestCase
                 'calculatedTaxes' => [],
                 'taxRules' => [],
             ],
-            // Shopware 6.7+ verlangt CashRoundingConfig fuer Order-Entity (Pflichtfelder).
+            // Shopware 6.7+ verlangt CashRoundingConfig für Order-Entity (Pflichtfelder).
             'totalRounding' => [
                 'decimals' => 2,
                 'interval' => 0.01,

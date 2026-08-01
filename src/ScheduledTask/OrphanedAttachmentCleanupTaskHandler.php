@@ -51,13 +51,13 @@ final class OrphanedAttachmentCleanupTaskHandler extends ScheduledTaskHandler
         $folderId = $this->mediaFolderInstaller->findFolderId($context);
 
         if ($folderId === null) {
-            // Warnung, nicht debug: Der Medienordner wird ueber seinen NAMEN gesucht. Benennt
+            // Warnung, nicht debug: Der Medienordner wird über seinen NAMEN gesucht. Benennt
             // ihn jemand im Medien-Manager um, findet der Cleanup ihn nicht mehr -- und
             // hochgeladene Kundendateien blieben unbemerkt liegen, obwohl die Aufbewahrungs-
             // frist etwas anderes verspricht. Auf debug war dieser Fall unsichtbar.
             $this->logger->warning('rc_order_attachment.cleanup.orphans.no_folder', [
                 'hinweis' => 'Medienordner nicht gefunden -- wurde er im Medien-Manager umbenannt? '
-                    . 'Ohne ihn raeumt der Cleanup keine verwaisten Uploads ab.',
+                    . 'Ohne ihn räumt der Cleanup keine verwaisten Uploads ab.',
             ]);
 
             return;

@@ -39,8 +39,8 @@ final class CustomFieldInstaller
     private const FIELD_ID = '0bc4f1a4b6e34ca7a2a9b4a4ad44cf02';
 
     /**
-     * Auch die Zuordnung des Sets zur Entitaet braucht eine feste ID. Ohne sie vergibt der
-     * Upsert bei jedem Aufruf eine neue UUID und laeuft gegen den eindeutigen Index
+     * Auch die Zuordnung des Sets zur Entität braucht eine feste ID. Ohne sie vergibt der
+     * Upsert bei jedem Aufruf eine neue UUID und läuft gegen den eindeutigen Index
      * `uniq.custom_field_set_relation.entity_name` — `plugin:update` bricht dann ab. Derselbe
      * Fehler wie beim Feld, nur eine Ebene tiefer.
      */
@@ -138,8 +138,8 @@ final class CustomFieldInstaller
     }
 
     /**
-     * Gegenstueck zu {@see removeLegacyField()} fuer die Set-Relation. Bestandsinstallationen
-     * tragen sie unter einer Zufalls-UUID; ohne Aufraeumen liefe der Upsert mit fester
+     * Gegenstück zu {@see removeLegacyField()} für die Set-Relation. Bestandsinstallationen
+     * tragen sie unter einer Zufalls-UUID; ohne Aufräumen liefe der Upsert mit fester
      * {@see RELATION_ID} erneut gegen den eindeutigen Index.
      */
     private function removeLegacyRelation(Context $context): void

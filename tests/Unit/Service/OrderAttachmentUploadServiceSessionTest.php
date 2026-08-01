@@ -72,7 +72,7 @@ final class OrderAttachmentUploadServiceSessionTest extends TestCase
 
         try {
             $service->upload($this->uploadedFile(), $this->config(), Context::createDefaultContext());
-            static::fail('Der Upload haette abgelehnt werden muessen.');
+            static::fail('Der Upload hätte abgelehnt werden müssen.');
         } catch (AttachmentUploadException $ausnahme) {
             static::assertSame(['sessionUnavailable'], $ausnahme->codes);
         }
@@ -161,13 +161,13 @@ final class OrderAttachmentUploadServiceSessionTest extends TestCase
     {
         $folderRepository = $this->createMock(EntityRepository::class);
 
-        // Der MediaService liefert im Betrieb die ID des gespeicherten Mediums zurueck. Ein
-        // Double, das null liefert, laesst den Service mit leerer ID weiterlaufen -- dann
-        // greift der Uuid-Guard im Aufraeumpfad und der Test scheitert am falschen Grund.
+        // Der MediaService liefert im Betrieb die ID des gespeicherten Mediums zurück. Ein
+        // Double, das null liefert, lässt den Service mit leerer ID weiterlaufen -- dann
+        // greift der Uuid-Guard im Aufräumpfad und der Test scheitert am falschen Grund.
         $mediaService = $this->createMock(MediaService::class);
         $mediaService->method('saveMediaFile')->willReturnCallback(
             // PHPUnit reicht die Argumente positionsbasiert weiter, auch wenn der Service sie
-            // benannt uebergibt: 4 = mediaId (mediaFile, filename, context, folder, mediaId, private).
+            // benannt übergibt: 4 = mediaId (mediaFile, filename, context, folder, mediaId, private).
             static fn (mixed ...$argumente): string => (string) ($argumente[4] ?? Uuid::randomHex())
         );
 

@@ -27,11 +27,11 @@ node_modules/
 
 # Das gebaute Storefront-JS und das Admin-Bundle werden BEWUSST mitgeliefert und sind deshalb
 # nicht ignoriert: Der Live-Server hat kein Node. Ohne diese Dateien käme das Upload-Feld auf
-# der Confirm-Seite ohne sein JavaScript an -- ein Feld, das nichts tut, und das faellt erst
-# auf, wenn ein Kunde eine Datei anhaengen will.
+# der Confirm-Seite ohne sein JavaScript an -- ein Feld, das nichts tut, und das fällt erst
+# auf, wenn ein Kunde eine Datei anhängen will.
 #   src/Resources/app/storefront/dist/     (Storefront-JS)
 #   src/Resources/public/administration/   (Admin-Bundle)
-# Frische pruefen: dist-freshness-check.sh im brief-done-gate baut neu und vergleicht.
+# Frische prüfen: dist-freshness-check.sh im brief-done-gate baut neu und vergleicht.
 
 # OS
 .DS_Store
