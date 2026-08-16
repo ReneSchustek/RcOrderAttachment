@@ -16,6 +16,10 @@ Nicht abgeschlossene Uploads werden automatisch nach einer konfigurierbaren Fris
 
 ## Installation
 
+Das Plugin gehört als Ordner `custom/plugins/RcOrderAttachment` in die Shopware-Installation. Übertragen wird er von Hand — per FTP in dieses Verzeichnis kopieren; ein Composer-Paket gibt es nicht. Danach registriert Shopware ihn über die folgenden Befehle:
+
+Als Archiv geht es auch ohne FTP: In der Administration unter **Erweiterungen → Meine Erweiterungen → Erweiterung hochladen** nimmt Shopware eine ZIP-Datei entgegen und legt sie selbst an die richtige Stelle; auf der Konsole tut `plugin:zip-import` dasselbe. Danach folgen dieselben Schritte wie unten. Wer das Archiv unter macOS packt, entfernt vorher den Ordner `__MACOSX` — sonst weist Shopware die Datei ab.
+
 Das gebaute Storefront-JS und das Admin-Bundle sind im Plugin enthalten — auf dem Server ist **kein Node-Build nötig**.
 
 ```bash
@@ -25,6 +29,8 @@ php bin/console assets:install
 php bin/console theme:compile
 php bin/console cache:clear
 ```
+
+**Aktualisierungen laufen denselben Weg.** Den neuen Ordner per FTP über den alten legen, danach `plugin:refresh` und `plugin:update RcOrderAttachment`. Eine Aktualisierung von selbst gibt es nicht — ohne Composer-Paket und ohne Shopware-Store bleibt sie Sache des Betreibers. Vor einem Sprung über eine Hauptversion gehört ein Datenbank-Abzug dazu.
 
 `assets:install` verteilt das Admin-Bundle, `theme:compile` übernimmt das mitgelieferte Storefront-JS.
 
