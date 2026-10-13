@@ -31,7 +31,7 @@ node_modules/
 # auf, wenn ein Kunde eine Datei anhängen will.
 #   src/Resources/app/storefront/dist/     (Storefront-JS)
 #   src/Resources/public/administration/   (Admin-Bundle)
-# Frische prüfen: dist-freshness-check.sh im brief-done-gate baut neu und vergleicht.
+# Frische prüfen: neu bauen und das Ergebnis mit dem eingecheckten Stand vergleichen.
 
 # OS
 .DS_Store

@@ -1,10 +1,10 @@
 # RcOrderAttachment
 
-Shopware 6 Plugin — der Kunde lädt auf der Confirm-Page Dokumente (Zeichnungen, Skizzen, Pläne) hoch, die automatisch an die Bestell-Bestätigungs-Mail gehängt werden.
+Ein Shopware-6-Plugin, mit dem der Kunde auf der Confirm-Page Dokumente (Zeichnungen, Skizzen, Pläne) hochlädt. Sie hängen anschließend automatisch an der Bestell-Bestätigungs-Mail.
 
 ## Was das Plugin macht
 
-Im letzten Checkout-Schritt — nach Eingabe der Kundendaten, vor „Kauf abschließen" — erscheint ein Upload-Bereich. Hochgeladene Dateien werden privat gespeichert (`/media-private/…`), nach Bestellabschluss als Anhang an `order_confirmation_mail` versendet und damit den Shop-Mitarbeitern direkt zugänglich gemacht.
+Im letzten Checkout-Schritt, nach der Eingabe der Kundendaten und vor „Kauf abschließen", erscheint ein Upload-Bereich. Hochgeladene Dateien werden privat gespeichert (`/media-private/…`), nach Bestellabschluss als Anhang an `order_confirmation_mail` versendet und damit den Shop-Mitarbeitern direkt zugänglich gemacht.
 
 Nicht abgeschlossene Uploads werden automatisch nach einer konfigurierbaren Frist entfernt. Bestell-Anhänge unterliegen einer DSGVO-Retention-Frist und werden danach automatisch gelöscht.
 
@@ -16,11 +16,11 @@ Nicht abgeschlossene Uploads werden automatisch nach einer konfigurierbaren Fris
 
 ## Installation
 
-Das Plugin gehört als Ordner `custom/plugins/RcOrderAttachment` in die Shopware-Installation. Übertragen wird er von Hand — per FTP in dieses Verzeichnis kopieren; ein Composer-Paket gibt es nicht. Danach registriert Shopware ihn über die folgenden Befehle:
+Das Plugin gehört als Ordner `custom/plugins/RcOrderAttachment` in die Shopware-Installation. Übertragen wird er von Hand per FTP in dieses Verzeichnis, ein Composer-Paket gibt es nicht. Danach registriert Shopware ihn über die folgenden Befehle:
 
-Als Archiv geht es auch ohne FTP: In der Administration unter **Erweiterungen → Meine Erweiterungen → Erweiterung hochladen** nimmt Shopware eine ZIP-Datei entgegen und legt sie selbst an die richtige Stelle; auf der Konsole tut `plugin:zip-import` dasselbe. Danach folgen dieselben Schritte wie unten. Wer das Archiv unter macOS packt, entfernt vorher den Ordner `__MACOSX` — sonst weist Shopware die Datei ab.
+Als Archiv geht es auch ohne FTP: In der Administration unter **Erweiterungen → Meine Erweiterungen → Erweiterung hochladen** nimmt Shopware eine ZIP-Datei entgegen und legt sie selbst an die richtige Stelle; auf der Konsole tut `plugin:zip-import` dasselbe. Danach folgen dieselben Schritte wie unten. Wer das Archiv unter macOS packt, entfernt vorher den Ordner `__MACOSX`, sonst weist Shopware die Datei ab.
 
-Das gebaute Storefront-JS und das Admin-Bundle sind im Plugin enthalten — auf dem Server ist **kein Node-Build nötig**.
+Das gebaute Storefront-JS und das Admin-Bundle sind im Plugin enthalten. Auf dem Server ist deshalb **kein Node-Build nötig**.
 
 ```bash
 php bin/console plugin:refresh
@@ -30,11 +30,11 @@ php bin/console theme:compile
 php bin/console cache:clear
 ```
 
-**Aktualisierungen laufen denselben Weg.** Den neuen Ordner per FTP über den alten legen, danach `plugin:refresh` und `plugin:update RcOrderAttachment`. Eine Aktualisierung von selbst gibt es nicht — ohne Composer-Paket und ohne Shopware-Store bleibt sie Sache des Betreibers. Vor einem Sprung über eine Hauptversion gehört ein Datenbank-Abzug dazu.
+**Aktualisierungen laufen denselben Weg.** Den neuen Ordner per FTP über den alten legen, danach `plugin:refresh` und `plugin:update RcOrderAttachment`. Von selbst aktualisiert sich nichts: Ohne Composer-Paket und ohne Shopware-Store bleibt das Sache des Betreibers. Vor einem Sprung über eine Hauptversion gehört ein Datenbank-Abzug dazu.
 
 `assets:install` verteilt das Admin-Bundle, `theme:compile` übernimmt das mitgelieferte Storefront-JS.
 
-**Beim Update** den Plugin-Ordner vollständig überschreiben — einschließlich `src/Resources/app/storefront/dist/` und `src/Resources/public/` — und dieselben Befehle mit `plugin:update` statt `plugin:install` fahren.
+**Beim Update** den Plugin-Ordner vollständig überschreiben (einschließlich `src/Resources/app/storefront/dist/` und `src/Resources/public/`) und dieselben Befehle mit `plugin:update` statt `plugin:install` fahren.
 
 Bei eigenen Frontend-Änderungen (SCSS/JS) wird neu gebaut und das Ergebnis eingecheckt:
 
@@ -78,25 +78,25 @@ Im Admin unter **Einstellungen → System → Plugins → Bestellungs-Anhänge �
 | An Bestätigungs-Mail anhängen | Anhänge an `order_confirmation_mail` mitsenden | `true` |
 | Mail-Template-Technical-Names | Whitelist der Mail-Templates, an die angehängt wird | `order_confirmation_mail` |
 
-PHP-Limits (`upload_max_filesize`, `post_max_size`) bilden den absoluten Deckel — größere Konfigurationen werden vom Webserver vor PHP abgeschnitten. Empfohlen: PHP-Limits auf mindestens 12 MB setzen, damit Plugin-Default (10 MB je Datei) sicher passt.
+PHP-Limits (`upload_max_filesize`, `post_max_size`) bilden den absoluten Deckel. Was darüber hinaus konfiguriert ist, schneidet der Webserver schon vor PHP ab. Die PHP-Limits sollten deshalb bei mindestens 12 MB liegen, damit der Plugin-Default (10 MB je Datei) sicher passt.
 
 ## Sicherheit
 
 ### Mehrschichtige Verteidigung im Plugin
 
-1. **Whitelist** der erlaubten Endungen (admin-konfigurierbar, normalisiert) — sie gilt **nur für Uploads dieses Plugins**. Shopware fragt die erlaubten Endungen über ein Event ab, das für jeden Media-Upload im Shop feuert; das Plugin markiert dafür den Upload-Context und erweitert die Liste ausschließlich bei gesetztem Marker. Eine hier eingetragene Sonder-Endung (z. B. `dwg`) wird dadurch **nicht** shopweit erlaubt
-2. **Hart kodierte Blacklist** gefährlicher Endungen (`php`, `phtml`, `phar`, `htaccess`, `sh`, `exe`, `bat`, `cmd`, `ps1`, `vbs`, `js`, `jsp`, `asp`, `aspx`, `html`, `htm`, `svg`, `hta`, `dll`, `msi`, …) — überstimmt die Whitelist
+1. **Whitelist** der erlaubten Endungen (admin-konfigurierbar, normalisiert). Sie gilt **nur für Uploads dieses Plugins**. Shopware fragt die erlaubten Endungen über ein Event ab, das für jeden Media-Upload im Shop feuert; das Plugin markiert dafür den Upload-Context und erweitert die Liste ausschließlich bei gesetztem Marker. Eine hier eingetragene Sonder-Endung (z. B. `dwg`) wird dadurch **nicht** shopweit erlaubt
+2. **Hart kodierte Blacklist** gefährlicher Endungen (`php`, `phtml`, `phar`, `htaccess`, `sh`, `exe`, `bat`, `cmd`, `ps1`, `vbs`, `js`, `jsp`, `asp`, `aspx`, `html`, `htm`, `svg`, `hta`, `dll`, `msi`, …), überstimmt die Whitelist
 3. **MIME-Detection** server-seitig per `finfo` (kein Client-`Content-Type`-Trust)
 4. **Magic-Bytes-Check** für PDF, JPEG, PNG, WebP, HEIC/HEIF, GIF, ZIP, Office-Dokumente
-5. **Script-Signaturen-Scan** der ersten 2 KB (`<?php`, `<script`, Shebang-Lines) — Schutz gegen Polyglot-Dateien
-6. **Datei-Umbenennung** auf `rc-<uuid>.<ext>` — der Original-Filename steht nur in der DB, nie im Filesystem-Pfad
+5. **Script-Signaturen-Scan** der ersten 2 KB (`<?php`, `<script`, Shebang-Lines) als Schutz gegen Polyglot-Dateien
+6. **Datei-Umbenennung** auf `rc-<uuid>.<ext>`; der Original-Filename steht nur in der DB, nie im Filesystem-Pfad
 7. **Filename-Sanitization** entfernt CRLF, Steuerzeichen, Bidi-Override-Marker (Schutz vor Phishing-Filenames wie `cute‮gpj.exe`)
 8. **EXIF-Strip** aus Bildern (GPS-Koordinaten weg vor Speicherung)
 9. **Private Speicherung** im dedizierten Media-Folder → `/media-private/`, kein direkter HTTP-Pfad
 10. **POST-only + SameSite-Session-Cookie** auf Upload- und Remove-Endpoint. Shopware hat den CSRF-Layer mit 6.5 ersatzlos entfernt (`sw_csrf`, `CsrfPlaceholderHandler` existieren nicht mehr); Cross-Site-Schutz liefert seitdem das `SameSite=Lax`-Session-Cookie. Zusätzlich sind Remove-Tokens 128-Bit-Zufallswerte und ausschließlich in der eigenen Session gültig
-11. **Login-Required** auf Upload-Endpoint (Guest-Checkout zulässig — Standard-Shopware-Verhalten)
+11. **Login-Required** auf Upload-Endpoint (Guest-Checkout zulässig, wie im Shopware-Standard)
 12. **Owner-Check** beim Account-Download: Customer sieht nur Anhänge eigener Orders
-13. **Cart-Validator** erzwingt „Upload Pflicht" server-seitig — JS-Bypass nicht möglich
+13. **Cart-Validator** erzwingt „Upload Pflicht" server-seitig, ein Umgehen per JS ist nicht möglich
 14. **Rate-Limiting** pro Session (Cache-basiert, konfigurierbar)
 15. **Order-Version-Filter** verhindert Draft-Version-Vermischung
 16. **Sichere Response-Header** (`X-Content-Type-Options`, CSP, Referrer-Policy, X-Frame-Options) auf allen JSON-Endpoints
@@ -112,7 +112,7 @@ Diese Verteidigungs-Schichten gehören in den Webserver/Hosting-Layer und sind *
 | **WAF/Cloudflare Rate-Limit** auf Upload-Endpoint | Plugin-Rate-Limit ist Defense-in-Depth, kein Erste-Verteidigungslinie. WAF stoppt Bots vor PHP. |
 | **TLS-only + HSTS** im Webserver | Plugin kann HTTPS nicht erzwingen. Pflicht via `Strict-Transport-Security`-Header. |
 | **`upload_max_filesize` ≥ `maxFileSizeKb`** | PHP-Limit ist hartes Gate. Plugin-Konfig darunter sonst wirkungslos. |
-| **PDF-Reader mit Sandbox beim Mitarbeiter** | PDFs können `OpenAction`-JavaScript enthalten — Plugin strippt das nicht. Adobe-Acrobat-Sandbox / Foxit-Reader sind sichere Defaults. |
+| **PDF-Reader mit Sandbox beim Mitarbeiter** | PDFs können `OpenAction`-JavaScript enthalten, und das Plugin entfernt es nicht. Adobe-Acrobat-Sandbox / Foxit-Reader sind sichere Defaults. |
 | **`qpdf --linearize --object-streams=disable`** vor Mail-Versand | Optionaler PDF-JS-Strip auf OS-Ebene. |
 | **Mailbox-Quota beim Mitarbeiter** | Schutz gegen Mail-Volume-Inflation durch Customer-Bestellungen mit großen Anhängen. |
 
@@ -134,7 +134,7 @@ Das Plugin verarbeitet personenbezogene Daten (Original-Filename, hochgeladenes 
 
 ### Datenschutz-Hinweis im UI
 
-Auf der Confirm-Page erscheint ein aufklappbares Hinweis-Feld vor dem Upload — Pflicht nach DSGVO Art. 13 (Informationspflicht).
+Auf der Confirm-Page erscheint ein aufklappbares Hinweis-Feld vor dem Upload. Das verlangt DSGVO Art. 13 (Informationspflicht).
 
 ### Auftragsverarbeitung bei Cloud-Storage
 
@@ -169,7 +169,7 @@ Empfohlene Tests: iOS Safari (iOS 15+), Android Chrome (Android 10+).
 
 ## Plugin-Interaktion
 
-Kompatibel mit anderen Ruhrcoder-Plugins, die den Checkout berühren — `RcDynamicPrice`, `RcCartSplitter`, `RcCustomFields`, `RcColorPicker`:
+Kompatibel mit anderen Ruhrcoder-Plugins, die den Checkout berühren, also `RcDynamicPrice`, `RcCartSplitter`, `RcCustomFields` und `RcColorPicker`:
 
 - Berührt **keinen** Buy-Widget-Block, **keine** LineItem-ID, **kein** Cart-Payload
 - Erweitert ausschließlich Confirm-Page (`page_checkout_additional`), Account-Order-Page und Mail-Pipeline
@@ -178,13 +178,13 @@ Kompatibel mit anderen Ruhrcoder-Plugins, die den Checkout berühren — `RcDyna
 
 ## Architektur
 
-Klassisch Shopware-Plugin: Subscriber/Controller → Service → DAL-Repository → Entity. Senior-Erweiterungen:
+Aufgebaut ist es wie ein klassisches Shopware-Plugin: Subscriber/Controller → Service → DAL-Repository → Entity. Dazu kommen:
 
-- **Page-Loader-Pattern** für DSGVO-relevante Storefront-Pfade: `Storefront\Page\OrderAttachmentPageletLoaderInterface` sammelt die Daten für Confirm- und Account-Order-Page. Die Subscriber (`CheckoutConfirmPageSubscriber`, `AccountOrderPageSubscriber`) sind reine Event-Adapter und delegieren ans Interface — eine spätere Caching-Decoration ist ohne Subscriber-Eingriff möglich.
+- **Page-Loader-Pattern** für DSGVO-relevante Storefront-Pfade: `Storefront\Page\OrderAttachmentPageletLoaderInterface` sammelt die Daten für Confirm- und Account-Order-Page. Die Subscriber (`CheckoutConfirmPageSubscriber`, `AccountOrderPageSubscriber`) sind reine Event-Adapter und delegieren ans Interface. Eine spätere Caching-Decoration kommt so ohne Eingriff in die Subscriber aus.
 - **Service-Boundaries als Interfaces**: `OrderAttachmentManagerInterface` und `MailAttachmentStatusTrackerInterface` lassen Caller und Tests unabhängig von der konkreten (`final`-)Implementierung sein. Standard-Aufruf läuft via `services.xml`-Alias auf die konkrete Klasse.
-- **Mail-Anhang-Status-Tracking**: internes Custom-Field `rc_order_attachment_mail_status` auf `order` mit den Werten `attached`, `partial_failure`, `failed`. Wird vom `MailBeforeValidateSubscriber` über `MailAttachmentStatusTrackerInterface` gesetzt — das Custom-Field-Set wird via `CustomFieldInstaller` in `install()`/`update()` idempotent angelegt.
-- **Opt-in Mail-Retry**: bei aktiviertem `enableMailRetry` (Default `false`) dispatcht der Subscriber bei Teil-/Voll-Fehler ein `RetryFailedMailAttachmentsMessage`. Die Nachricht implementiert `AsyncMessageInterface` und wird damit auf den `async`-Transport geroutet. Der `RetryFailedMailAttachmentsHandler` prüft die Lesbarkeit der Anhänge bis zu fünfmal mit Exponential-Backoff (60 s, verdoppelnd, gedeckelt), indem er sich selbst mit `attempt + 1` und `DelayStamp` neu dispatcht — bewusst kein `RecoverableMessageHandlingException`, weil dabei der Versuchszähler nicht mitwandert und die Abbruchbedingung nie griffe. Erst danach final `failed`. Operator entscheidet bewusst, ob ein Mail-Re-Send manuell oder automatisiert erfolgt.
-  > **Voraussetzung: ein laufender Messenger-Worker** (`bin/console messenger:consume async`). Ohne Worker bleibt die Nachricht in der Queue liegen — der Status verharrt dann auf `partial_failure`/`failed`, und es findet kein Retry statt. Ohne die Transport-Zuordnung wiederum liefe der Retry synchron im selben Request ab und die Wartezeiten wären wirkungslos.
+- **Mail-Anhang-Status-Tracking**: internes Custom-Field `rc_order_attachment_mail_status` auf `order` mit den Werten `attached`, `partial_failure`, `failed`. Wird vom `MailBeforeValidateSubscriber` über `MailAttachmentStatusTrackerInterface` gesetzt. Das Custom-Field-Set wird via `CustomFieldInstaller` in `install()`/`update()` idempotent angelegt.
+- **Opt-in Mail-Retry**: bei aktiviertem `enableMailRetry` (Default `false`) dispatcht der Subscriber bei Teil-/Voll-Fehler ein `RetryFailedMailAttachmentsMessage`. Die Nachricht implementiert `AsyncMessageInterface` und wird damit auf den `async`-Transport geroutet. Der `RetryFailedMailAttachmentsHandler` prüft die Lesbarkeit der Anhänge bis zu fünfmal mit Exponential-Backoff (60 s, verdoppelnd, gedeckelt), indem er sich selbst mit `attempt + 1` und `DelayStamp` neu dispatcht. Bewusst nicht über `RecoverableMessageHandlingException`, weil dabei der Versuchszähler nicht mitwandert und die Abbruchbedingung nie griffe. Erst danach final `failed`. Operator entscheidet bewusst, ob ein Mail-Re-Send manuell oder automatisiert erfolgt.
+  > **Voraussetzung: ein laufender Messenger-Worker** (`bin/console messenger:consume async`). Ohne Worker bleibt die Nachricht in der Queue liegen, der Status verharrt dann auf `partial_failure`/`failed`, und es findet kein Retry statt. Ohne die Transport-Zuordnung wiederum liefe der Retry synchron im selben Request ab und die Wartezeiten wären wirkungslos.
 
 ## Cleanup
 
@@ -199,20 +199,20 @@ Vier Lösch-Wege halten den Server sauber:
 
 ## Mail-Template
 
-**Keine Template-Änderung nötig.** Anhänge werden über `binAttachments` ins `MailBeforeValidateEvent` injiziert — das Mail-System hängt sie automatisch an die `order_confirmation_mail` an.
+**Keine Template-Änderung nötig.** Anhänge werden über `binAttachments` ins `MailBeforeValidateEvent` injiziert, und das Mail-System hängt sie automatisch an die `order_confirmation_mail` an.
 
 Die Whitelist `mailTemplateWhitelist` steuert, an welche Mail-Templates Anhänge gehängt werden. Default ist `order_confirmation_mail`, damit Order-State-Change-Mails (Versand, Storno, Rückerstattung) NICHT mit Anhängen geflutet werden.
 
-**Wie der Abgleich funktioniert.** Shopware liefert im `MailBeforeValidateEvent` keinen `mailTemplate`-Eintrag in den Template-Daten — `SendMailAction` baut sie als `['eventName' => <Flow-Event>, ...$flow->data()]`. Der einzige Bezug zum konkreten Template ist `data['templateId']`. Der `MailTemplateTypeResolver` löst daraus den `technicalName` des Mail-Template-Types auf. Verglichen wird gegen zwei Kandidaten:
+**Wie der Abgleich funktioniert.** Shopware liefert im `MailBeforeValidateEvent` keinen `mailTemplate`-Eintrag in den Template-Daten, denn `SendMailAction` baut sie als `['eventName' => <Flow-Event>, ...$flow->data()]`. Der einzige Bezug zum konkreten Template ist `data['templateId']`. Der `MailTemplateTypeResolver` löst daraus den `technicalName` des Mail-Template-Types auf. Verglichen wird gegen zwei Kandidaten:
 
-1. den aufgelösten Template-Type (`order_confirmation_mail`) — der Default
-2. den Flow-Event-Namen (`checkout.order.placed`) — falls ein Admin ihn einträgt
+1. den aufgelösten Template-Type (`order_confirmation_mail`), das ist der Default
+2. den Flow-Event-Namen (`checkout.order.placed`), falls ein Admin ihn einträgt
 
-Lässt sich der Template-Type nicht auflösen (gelöschtes Template, DB-Fehler) und passt auch der Event-Name nicht, wird **nicht** angehängt (fail-closed). Die Mail geht raus, nur ohne Anhang — der Fehlschlag steht im Log unter `rc_order_attachment.mail.template_type_lookup_failed`.
+Lässt sich der Template-Type nicht auflösen (gelöschtes Template, DB-Fehler) und passt auch der Event-Name nicht, wird **nicht** angehängt (fail-closed). Die Mail geht trotzdem raus, nur ohne Anhang. Der Fehlschlag steht im Log unter `rc_order_attachment.mail.template_type_lookup_failed`.
 
 Leere Whitelist bedeutet „an alle Mails mit Order-Bezug anhängen".
 
-Wer im Mail-Text auf die Anhänge hinweisen möchte, kann das Standard-Snippet selbst ergänzen — die Plugin-Logik prüft nicht den Body.
+Wer im Mail-Text auf die Anhänge hinweisen möchte, kann das Standard-Snippet selbst ergänzen. Die Plugin-Logik prüft den Body nicht.
 
 ## Bekannte Einschränkungen
 
@@ -220,8 +220,8 @@ Wer im Mail-Text auf die Anhänge hinweisen möchte, kann das Standard-Snippet s
 - **PDF-JavaScript wird nicht gestrippt**: PDFs mit eingebettetem JS gehen 1:1 weiter. Mitarbeiter-PDF-Reader muss sandboxed sein. Plugin-eigener Strip wäre `qpdf`-abhängig.
 - **Antivirus-Scan ist nicht integriert**: EICAR-Test-Patterns gehen durch. Bei kritischen Umgebungen ClamAV als Webserver-Modul vorschalten.
 - **Multi-SC-Whitelist**: Der `MediaFileExtensionWhitelistEvent` hat keinen SC-Kontext. Pro-SC-unterschiedliche Endungs-Whitelists werden zur globalen Vereinigungs-Menge.
-- **Customer-Account-Wechsel in derselben Browser-Session**: Pending-Uploads sind session-basiert, nicht customer-gebunden — sie würden „mitwandern". Sehr seltener Edge-Case.
-- **Mail-Retry-Verhalten**: Bei Mail-Anhang-Failure (z. B. Storage-Down beim Mail-Versand) wird die Mail OHNE den betroffenen Anhang versendet — das Custom-Field `rc_order_attachment_mail_status` markiert den Befund (`partial_failure` / `failed`). Bei aktiviertem `enableMailRetry` (opt-in) wird ein Retry über die Messenger-Queue dispatcht; der eigentliche Re-Send der Mail bleibt bewusst Operator-Aufgabe, damit Kunden keine Duplikat-Mails erhalten.
+- **Customer-Account-Wechsel in derselben Browser-Session**: Pending-Uploads sind session-basiert, nicht an den Customer gebunden, und würden deshalb „mitwandern". Das ist ein sehr seltener Edge-Case.
+- **Mail-Retry-Verhalten**: Bei Mail-Anhang-Failure (z. B. Storage-Down beim Mail-Versand) wird die Mail OHNE den betroffenen Anhang versendet. Das Custom-Field `rc_order_attachment_mail_status` markiert den Befund (`partial_failure` / `failed`). Bei aktiviertem `enableMailRetry` (opt-in) wird ein Retry über die Messenger-Queue dispatcht; der eigentliche Re-Send der Mail bleibt bewusst Operator-Aufgabe, damit Kunden keine Duplikat-Mails erhalten.
 
 ## Update
 
@@ -240,7 +240,7 @@ composer install
 composer quality   # cs-check + phpstan + test
 ```
 
-Unit-Tests laufen lokal ohne lebende Shopware-Instanz (`vendor/bin/phpunit` mit lokalem `phpunit.xml` — nur die Unit-Suite). Integration-Tests (`tests/Integration/` für DAL-Round-Trips, Migration-Schema-Checks, Mail-Anhang-Kette) benötigen das Shopware-Test-Bootstrap, eine MySQL-Test-Datenbank und laufen via `phpunit.xml.dist` aus dem Shopware-Root:
+Unit-Tests laufen lokal ohne lebende Shopware-Instanz (`vendor/bin/phpunit` mit lokalem `phpunit.xml`, nur die Unit-Suite). Integration-Tests (`tests/Integration/` für DAL-Round-Trips, Migration-Schema-Checks, Mail-Anhang-Kette) benötigen das Shopware-Test-Bootstrap, eine MySQL-Test-Datenbank und laufen via `phpunit.xml.dist` aus dem Shopware-Root:
 
 ```bash
 DATABASE_URL=mysql://user:pass@host:3306/shopware_test APP_ENV=test \
