@@ -53,11 +53,11 @@ final class OrderAttachmentUploadServiceRemoveTest extends TestCase
 
     /**
      * Was: Ein Pending-Upload, dessen Media bereits an eine Bestellung gebunden ist.
-     * Warum: REGRESSION mit Datenverlust. Nach dem Order-Placement blieb der Eintrag
-     *        in der Session stehen; die Confirm-Page des nächsten Warenkorbs zeigte ihn
-     *        samt gültigem Remove-Token. Ein Klick löschte das Media — und der
-     *        FK-Cascade riss den Anhang der abgeschlossenen Bestellung mit. Der Support
-     *        stand vor einer Bestellung mit Status `attached`, aber ohne Datei.
+     * Warum: Sonst droht Datenverlust. Bleibt der Eintrag nach dem Order-Placement in
+     *        der Session stehen, zeigt die Confirm-Page des nächsten Warenkorbs ihn samt
+     *        gültigem Remove-Token. Ein Klick löschte das Media, und der FK-Cascade risse
+     *        den Anhang der abgeschlossenen Bestellung mit. Der Support stünde vor einer
+     *        Bestellung mit Status `attached`, aber ohne Datei.
      * Erwartet: KEIN Media-Delete. Der Session-Eintrag verschwindet trotzdem.
      */
     public function testDoesNotDeleteMediaAlreadyBoundToAnOrder(): void

@@ -147,9 +147,6 @@ final class OrphanedAttachmentCleanupQueryTest extends IntegrationTestCase
      *        an. Das ist die Schutzschwelle für laufende Bestellvorgänge — ohne sie löschte der
      *        nächste Lauf eine Datei, die der Kunde gerade hochgeladen hat. Fällt das `max(1, …)`
      *        weg, fällt dieser Test.
-     *
-     *        Meine erste Fassung erwartete hier „0 = aus" und war rot. Das Verhalten ist richtig,
-     *        die Erwartung war es nicht.
      * Erwartet: Alte Waisen verschwinden, eine Datei aus der laufenden Stunde bleibt.
      */
     public function testRetentionIsClampedToAtLeastOneHour(): void

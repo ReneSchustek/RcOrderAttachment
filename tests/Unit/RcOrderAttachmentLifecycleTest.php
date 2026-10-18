@@ -47,9 +47,9 @@ final class RcOrderAttachmentLifecycleTest extends TestCase
 
     /**
      * Was: Ein Container, der auf jede Anfrage wirft.
-     * Warum: KERN-NACHWEIS. Vorher reichte eine unbekannte ID, um den gesamten Uninstall zu
-     *        beenden — mit zurückbleibenden privaten Uploads. Der Lifecycle muss stattdessen
-     *        weiterlaufen und den Fehlgriff protokollieren.
+     * Warum: Bräche eine unbekannte ID den gesamten Uninstall ab, blieben private Uploads
+     *        zurück. Der Lifecycle muss stattdessen weiterlaufen und den Fehlgriff
+     *        protokollieren.
      * Erwartet: Keine Exception nach aussen, ein Log-Eintrag mit der gesuchten Service-ID.
      */
     public function testMissingServiceIsLoggedInsteadOfThrown(): void

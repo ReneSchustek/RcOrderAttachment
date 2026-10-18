@@ -138,15 +138,14 @@ final class CheckoutOrderPlacedSubscriberTest extends TestCase
 
     /**
      * Was: Nach dem Order-Placement ist die Pending-Liste in der Session leer.
-     * Warum: REGRESSION mit Datenverlust. Geleert wurde vorher erst in
-     *        `onFinishPageLoaded()` — hinter einem `snapshotTaken`-Guard. Order-Placement
-     *        (`POST /checkout/order`) und Finish-Page (`GET /checkout/finish`) sind aber
-     *        zwei getrennte Requests; im zweiten war das Flag immer `false` (neue
-     *        Instanz bei PHP-FPM, `kernel.reset` im Worker-Mode). `clear()` war toter Code.
-     *        Folge: Die Datei blieb „pending", die Confirm-Page des nächsten Warenkorbs
-     *        zeigte sie mit gültigem Remove-Token. Ein Klick auf „Entfernen" löschte das
-     *        Media, und der FK `ON DELETE CASCADE` riss den Anhang der bereits
-     *        abgeschlossenen Bestellung mit.
+     * Warum: Sonst droht Datenverlust. Erst in `onFinishPageLoaded()` hinter einem
+     *        `snapshotTaken`-Guard geleert, geschähe es nie: Order-Placement
+     *        (`POST /checkout/order`) und Finish-Page (`GET /checkout/finish`) sind
+     *        zwei getrennte Requests; im zweiten wäre das Flag immer `false` (neue
+     *        Instanz bei PHP-FPM, `kernel.reset` im Worker-Mode). Die Datei bliebe
+     *        „pending", die Confirm-Page des nächsten Warenkorbs zeigte sie mit gültigem
+     *        Remove-Token. Ein Klick auf „Entfernen" löschte das Media, und der FK
+     *        `ON DELETE CASCADE` risse den Anhang der bereits abgeschlossenen Bestellung mit.
      * Erwartet: `count() === 0` unmittelbar nach `onOrderPlaced`.
      */
     public function testPendingStoreIsClearedRightAfterOrderPlaced(): void

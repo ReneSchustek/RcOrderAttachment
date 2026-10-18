@@ -110,10 +110,9 @@ final class OrderAttachmentUploadService
         );
 
         // Fail-closed: Ohne Session kann die Datei später keiner Bestellung zugeordnet werden.
-        // Vorher lief der Upload trotzdem als Erfolg durch -- der Kunde sah seine Datei in der
-        // Liste, sie wäre aber nie an der Bestellung angekommen und nach Ablauf der Frist vom
-        // Orphan-Cleanup entfernt worden. Jetzt wird das eben erzeugte Medium wieder gelöscht
-        // und der Fehler zurückgemeldet.
+        // Ein gemeldeter Erfolg zeigte dem Kunden seine Datei in der Liste, sie käme aber nie an
+        // der Bestellung an und verschwände nach Ablauf der Frist im Orphan-Cleanup. Deshalb
+        // wird das eben erzeugte Medium wieder gelöscht und der Fehler zurückgemeldet.
         if (!$this->pendingUploadStore->add($upload)) {
             $this->logger->error('rc_order_attachment.upload.no_session', $logContext + [
                 'mediaId' => $mediaId,

@@ -146,11 +146,10 @@ final class RcOrderAttachment extends Plugin
     /**
      * Logger-Kandidaten in der Reihenfolge, in der sie versucht werden.
      *
-     * `logger` ist in Shopware 6.7 **nicht öffentlich** — die Protokollierung der
-     * Aufräum-Fehler lief deshalb bisher ins Leere, obwohl sie ausdrücklich gegen stille
-     * DSGVO-Rückstände eingebaut worden war. Gemessen auf einer 6.7.12-Instanz:
-     * `logger` und `Psr\Log\LoggerInterface` privat, `monolog.logger.business_events`
-     * öffentlich. Die Liste bleibt trotzdem gestaffelt, weil die Sichtbarkeit eine
+     * `logger` ist in Shopware 6.7 **nicht öffentlich**; allein darauf gestützt liefe die
+     * Protokollierung der Aufräum-Fehler ins Leere, obwohl sie gerade gegen stille
+     * DSGVO-Rückstände da ist. Unter 6.7.12 sind `logger` und `Psr\Log\LoggerInterface`
+     * privat, `monolog.logger.business_events` öffentlich. Die Liste bleibt gestaffelt, weil die Sichtbarkeit eine
      * Container-Entscheidung der jeweiligen Installation ist und sich ändern kann.
      *
      * @var list<string>
@@ -227,9 +226,9 @@ final class RcOrderAttachment extends Plugin
 
     private function deletePluginMediaFolder(ContainerInterface $container, Connection $connection): void
     {
-        // Erst der Vermerk aus der Konfiguration, dann der Name. Wurde der Ordner im
-        // Medien-Manager umbenannt, fand ihn die reine Namenssuche nicht mehr -- dann blieben
-        // Ordner und private Kundendateien beim Deinstallieren zurück, obwohl das Plugin
+        // Erst der Vermerk aus der Konfiguration, dann der Name. Hat jemand den Ordner im
+        // Medien-Manager umbenannt, findet ihn die Namenssuche allein nicht, und Ordner samt
+        // privater Kundendateien blieben beim Deinstallieren zurück, obwohl das Plugin
         // Löschung zusagt.
         $folderId = $connection->fetchOne(
             'SELECT JSON_UNQUOTE(JSON_EXTRACT(configuration_value, "$._value"))

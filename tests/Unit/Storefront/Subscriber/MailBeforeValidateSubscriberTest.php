@@ -255,10 +255,10 @@ final class MailBeforeValidateSubscriberTest extends TestCase
      * Was: Produktiv-Realität — Default-Whitelist `order_confirmation_mail`,
      *      `eventName` ist der Flow-Event-Name `checkout.order.placed`, der
      *      Template-Type wird über `data['templateId']` aufgelöst.
-     * Warum: REGRESSION. Vorher prüfte der Subscriber nur `templateData['mailTemplate']`
-     *        (existiert in Shopware 6.7 nicht) mit Fallback auf `eventName`. Damit
-     *        verglich er `checkout.order.placed` gegen `order_confirmation_mail` —
-     *        kein Treffer, und es ging NIE ein Anhang an die Bestätigungs-Mail.
+     * Warum: Prüfte der Subscriber nur `templateData['mailTemplate']` (existiert in
+     *        Shopware 6.7 nicht) mit Fallback auf `eventName`, verglich er
+     *        `checkout.order.placed` gegen `order_confirmation_mail` — kein Treffer,
+     *        und es ginge NIE ein Anhang an die Bestätigungs-Mail.
      * Erwartet: Genau ein `binAttachments`-Eintrag mit Dateiname und Inhalt.
      */
     public function testAttachesWithDefaultWhitelistWhenTemplateTypeResolves(): void

@@ -105,17 +105,16 @@ final class CheckoutOrderPlacedSubscriber implements EventSubscriberInterface, R
         // weitere Teil-Orders desselben Requests (Cart-Split), das Leeren ist also
         // gefahrlos.
         //
-        // Vorher geschah das erst in `onFinishPageLoaded()` — und dort nie: Order-Placement
-        // (`POST /checkout/order`) und Finish-Page (`GET /checkout/finish`) sind zwei
-        // getrennte Requests. Der `snapshotTaken`-Guard war im zweiten Request immer
-        // `false`, weil der Service pro Request neu gebaut (PHP-FPM) bzw. per
-        // `kernel.reset` zurückgesetzt wird (Worker-Mode). `clear()` war damit toter Code.
+        // In `onFinishPageLoaded()` geschähe es nie: Order-Placement (`POST /checkout/order`)
+        // und Finish-Page (`GET /checkout/finish`) sind zwei getrennte Requests. Ein
+        // `snapshotTaken`-Guard wäre im zweiten Request immer `false`, weil der Service pro
+        // Request neu gebaut (PHP-FPM) bzw. per `kernel.reset` zurückgesetzt wird (Worker-Mode).
         //
-        // Die Folgen waren gravierend: Die Datei blieb als „pending" in der Session, die
+        // Die Folgen wären gravierend: Die Datei bliebe als „pending" in der Session, die
         // Confirm-Page des nächsten Warenkorbs zeigte sie samt gültigem Remove-Token.
-        // Ein Klick auf „Entfernen" löschte das Media — und der Fremdschlüssel
-        // `fk.rc_order_attachment.media_id` steht auf `ON DELETE CASCADE`, riss also den
-        // Anhang der bereits abgeschlossenen Bestellung mit. Ohne Entfernen wurde
+        // Ein Klick auf „Entfernen" löschte das Media, und weil der Fremdschlüssel
+        // `fk.rc_order_attachment.media_id` auf `ON DELETE CASCADE` steht, risse er den
+        // Anhang der bereits abgeschlossenen Bestellung mit. Ohne Entfernen würde
         // dieselbe Datei bei der nächsten Bestellung erneut angehängt und verschickt.
         $this->pendingUploadStore->clear();
 

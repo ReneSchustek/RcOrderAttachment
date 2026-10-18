@@ -20,13 +20,12 @@ use Shopware\Core\Framework\Uuid\Uuid;
  * der `order`-Entity (für die ist der Folder gedacht), sondern stehen logisch
  * dazwischen.
  *
- * **Wiedererkennung über die ID, nicht über den Namen.** Der Ordner wurde früher
- * ausschließlich über seinen Namen gesucht. Benennt ihn jemand im Medien-Manager um --
- * dort ist er ein ganz normaler Ordner --, fand ihn weder der Orphan-Cleanup noch die
- * Deinstallation: Der Cleanup räumte nichts mehr ab, obwohl die Aufbewahrungsfrist etwas
- * anderes verspricht, und beim Deinstallieren blieben Ordner samt privater Kundendateien
- * zurück. Die ID wird deshalb bei der Anlage vermerkt und zuerst gelesen; die Namenssuche
- * bleibt als Rückfall für Bestandsinstallationen, die den Vermerk noch nicht haben.
+ * Wiedererkannt wird der Ordner über seine ID. Im Medien-Manager ist er ein gewöhnlicher
+ * Ordner, den jemand umbenennen kann; eine reine Namenssuche fände ihn dann weder im
+ * Orphan-Cleanup noch bei der Deinstallation. Der Cleanup räumte nichts mehr ab, obwohl die
+ * Aufbewahrungsfrist etwas anderes verspricht, und beim Deinstallieren blieben Ordner samt
+ * privater Kundendateien zurück. Die ID wird deshalb bei der Anlage vermerkt und zuerst
+ * gelesen; die Namenssuche bleibt als Rückfall für Bestandsinstallationen ohne Vermerk.
  */
 final class MediaFolderInstaller
 {
@@ -45,8 +44,8 @@ final class MediaFolderInstaller
      *        gelesen. Nicht über den SystemConfigService: Dessen Schreib-Methoden sind in 6.7
      *        als veraltet markiert (kommender Parameter `silent`), und ein Wert, den nur das
      *        Plugin kennt, braucht weder Cache-Invalidierung noch Konfigurations-Event. Im
-     *        Lifecycle steht die Verbindung nicht immer bereit -- fehlt sie, greift die
-     *        Namenssuche wie bisher.
+     *        Lifecycle steht die Verbindung nicht immer bereit; fehlt sie, bleibt nur die
+     *        Namenssuche.
      */
     public function __construct(
         private readonly EntityRepository $mediaFolderRepository,

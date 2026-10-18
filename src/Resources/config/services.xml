@@ -21,7 +21,7 @@
         <service id="Ruhrcoder\RcOrderAttachment\Installer\MediaFolderInstaller">
             <argument type="service" id="media_folder.repository"/>
             <argument type="service" id="media_folder_configuration.repository"/>
-            <!-- Merkt sich die Ordner-ID: Der Ordner wurde früher nur über den Namen gefunden,
+            <!-- Für den Vermerk der Ordner-ID. Ohne ihn fände nur die Namenssuche den Ordner, und
                  eine Umbenennung im Medien-Manager legte Cleanup und Deinstallation still. -->
             <argument type="service" id="Doctrine\DBAL\Connection"/>
         </service>

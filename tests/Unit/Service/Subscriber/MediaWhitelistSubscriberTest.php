@@ -44,10 +44,10 @@ final class MediaWhitelistSubscriberTest extends TestCase
     /**
      * Was: Ein Media-Upload ohne den Herkunfts-Marker am Context — also jeder
      *      andere Upload im Shop (Admin-Medienverwaltung, anderes Plugin).
-     * Warum: KERN-SCOPE-NACHWEIS. Vorher erweiterte der Subscriber die Whitelist
-     *        für ALLE Uploads. Trug ein Admin `zip` in die Plugin-Config ein,
-     *        um Kunden ZIPs an Bestellungen anhängen zu lassen, war `zip`
-     *        anschließend shopweit erlaubt — auch für öffentliche Medien.
+     * Warum: Erweiterte der Subscriber die Whitelist für ALLE Uploads, wäre `zip`
+     *        shopweit erlaubt, sobald ein Admin es in die Plugin-Config einträgt,
+     *        um Kunden ZIPs an Bestellungen anhängen zu lassen — auch für
+     *        öffentliche Medien.
      * Erwartet: Whitelist unverändert.
      */
     public function testForeignUploadLeavesWhitelistUntouched(): void

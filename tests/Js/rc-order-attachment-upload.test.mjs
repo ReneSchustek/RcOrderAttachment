@@ -2,9 +2,7 @@
 // die clientseitige Vorprüfung (Endung, Dateigröße, Anzahl, Gesamtgröße), die Übersetzung
 // der Server-Fehlercodes und die Größenformatierung.
 //
-// Warum überhaupt: Bis v1.0.6 lieferte dieses Plugin Storefront-JS aus, ohne dass eine
-// einzige Zeile davon getestet war — der Gate meldete `[SKIP] Kein tests/Js`. Genau dieser
-// Code entscheidet, ob ein Kunde seine Datei anhängen kann.
+// Warum überhaupt: Genau dieser Code entscheidet, ob ein Kunde seine Datei anhängen kann.
 //
 // Der Quelltext wird gelesen und in einer Stub-Umgebung ausgewertet, damit das Plugin
 // unverändert als Modul buildbar bleibt (dasselbe Vorgehen wie im Theme).

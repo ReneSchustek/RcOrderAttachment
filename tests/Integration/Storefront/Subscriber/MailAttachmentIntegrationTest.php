@@ -54,7 +54,7 @@ final class MailAttachmentIntegrationTest extends TestCase
     /**
      * Was: Der Mail-Subscriber läuft mit den echten Event-Daten einer
      *      Bestellbestätigung.
-     * Warum: REGRESSION für den 🔴-Befund — ohne Auflösung der `templateId`
+     * Warum: Ohne Auflösung der `templateId`
      *        zum Template-Type-`technicalName` bleibt `binAttachments` leer
      *        und der Support bekommt die Kundendatei nie.
      * Erwartet: `binAttachments` enthält genau einen Eintrag mit Original-

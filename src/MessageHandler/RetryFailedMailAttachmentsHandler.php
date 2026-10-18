@@ -28,9 +28,9 @@ use Throwable;
  * Warum Re-Dispatch statt `RecoverableMessageHandlingException`:
  *   Symfony-Messenger stellt bei einer Recoverable-Exception dieselbe Nachricht
  *   erneut zu — das `attempt`-Feld bleibt dabei unverändert bei 1. Die
- *   Abbruchbedingung `attempt >= MAX_ATTEMPTS` war damit unerreichbar, der
- *   finale `failed`-Status wurde nie geschrieben, und die Zahl der Versuche
- *   hing allein an der `retry_strategy` des Transports. Mit explizitem
+ *   Abbruchbedingung `attempt >= MAX_ATTEMPTS` wäre damit unerreichbar, der
+ *   finale `failed`-Status würde nie geschrieben, und die Zahl der Versuche
+ *   hinge allein an der `retry_strategy` des Transports. Mit explizitem
  *   Re-Dispatch zählt der Handler selbst und ist unabhängig von der
  *   Transport-Konfiguration des Betreibers.
  *

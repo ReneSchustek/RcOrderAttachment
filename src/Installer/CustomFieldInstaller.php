@@ -116,8 +116,8 @@ final class CustomFieldInstaller
     }
 
     /**
-     * Entfernt Alt-Instanzen des Status-Felds, die unter einer anderen (früher
-     * zufälligen) ID als {@see FIELD_ID} liegen — Voraussetzung, damit der Upsert
+     * Entfernt Alt-Instanzen des Status-Felds, die im Bestand unter einer anderen,
+     * zufälligen ID als {@see FIELD_ID} liegen — Voraussetzung, damit der Upsert
      * mit fester ID nicht gegen die UNIQUE-Constraint `custom_field.name` läuft.
      */
     private function removeLegacyField(Context $context): void

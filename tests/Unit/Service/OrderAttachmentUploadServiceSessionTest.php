@@ -36,11 +36,9 @@ use Symfony\Component\HttpFoundation\RequestStack;
  * Prüft das Verhalten des Uploads, wenn keine Session zur Verfügung steht.
  *
  * Ohne Session landet die Datei in keinem Pending-Store — sie könnte später also keiner
- * Bestellung zugeordnet werden. Bis v1.0.5 meldete der Upload trotzdem Erfolg: Der Kunde sah
- * seine Datei in der Liste, angekommen wäre sie nie, und nach Ablauf der Frist hätte der
- * Orphan-Cleanup sie entfernt. Der Fund stammt aus dem Deep-Review vom 2026-07-15
- * („Upload meldet Erfolg trotz verworfenem PendingUpload bei fehlender Session") und war dort
- * nie verifiziert.
+ * Bestellung zugeordnet werden. Meldete der Upload trotzdem Erfolg, sähe der Kunde seine
+ * Datei in der Liste, ankommen würde sie nie, und nach Ablauf der Frist entfernte sie der
+ * Orphan-Cleanup.
  */
 #[CoversClass(OrderAttachmentUploadService::class)]
 final class OrderAttachmentUploadServiceSessionTest extends TestCase

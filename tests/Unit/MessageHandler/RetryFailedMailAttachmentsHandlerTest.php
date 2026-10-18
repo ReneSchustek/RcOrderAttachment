@@ -86,10 +86,10 @@ final class RetryFailedMailAttachmentsHandlerTest extends TestCase
 
     /**
      * Was: Storage weiterhin defekt bei `attempt = 1`.
-     * Warum: REGRESSION. Vorher warf der Handler eine
-     *        `RecoverableMessageHandlingException`; Messenger stellte dieselbe
-     *        Nachricht mit `attempt = 1` erneut zu. Die Zählung stand still,
-     *        `MAX_ATTEMPTS` wurde nie erreicht und `failed` nie geschrieben.
+     * Warum: Würfe der Handler eine `RecoverableMessageHandlingException`,
+     *        stellte Messenger dieselbe Nachricht mit `attempt = 1` erneut zu. Die
+     *        Zählung stünde still, `MAX_ATTEMPTS` würde nie erreicht und `failed`
+     *        nie geschrieben.
      * Erwartet: Kein Throw, kein Status-Schreiben, stattdessen eine neue
      *           Nachricht mit `attempt = 2` und 60 s Verzögerung.
      */

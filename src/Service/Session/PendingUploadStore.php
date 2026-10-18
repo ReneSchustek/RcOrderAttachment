@@ -32,9 +32,9 @@ final class PendingUploadStore
      *
      * Liefert `false`, wenn es keine Session gibt. Der Rückgabewert ist wichtig: Ohne Session
      * kann die Datei später keiner Bestellung zugeordnet werden -- sie läge als verwaistes
-     * Medium herum, bis der Orphan-Cleanup sie entfernt. Vorher meldete der Upload in diesem
-     * Fall trotzdem Erfolg, und der Kunde sah eine Datei, die nie ankommen konnte. Der Aufrufer
-     * muss den Fehlschlag deshalb behandeln.
+     * Medium herum, bis der Orphan-Cleanup sie entfernt. Meldete der Upload trotzdem Erfolg,
+     * sähe der Kunde eine Datei, die nie ankommt. Der Aufrufer muss den Fehlschlag deshalb
+     * behandeln.
      */
     public function add(PendingUpload $upload): bool
     {
