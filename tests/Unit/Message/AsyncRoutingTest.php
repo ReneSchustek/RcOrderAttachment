@@ -15,9 +15,9 @@ use Shopware\Core\Framework\MessageQueue\AsyncMessageInterface;
  *
  * Hintergrund, in der Testumgebung gemessen: Ohne Zuordnung behandelt Symfony eine Nachricht
  * synchron. Der Handler rechnet dann zwar seinen Exponential-Backoff aus und protokolliert ihn,
- * aber der `DelayStamp` wird nie ausgewertet — alle fünf Versuche liefen in **32 Millisekunden**
+ * aber der `DelayStamp` wird nie ausgewertet — alle fünf Versuche laufen in rund 30 Millisekunden
  * durch, bei berechneten Wartezeiten von zusammen 15 Minuten. Ein Storage-Ausfall, der länger als
- * einen Wimpernschlag dauert, verbrauchte damit sofort alle Versuche.
+ * einen Wimpernschlag dauert, verbraucht damit sofort alle Versuche.
  *
  * Der Fehler war von aussen unsichtbar: Der Handler ist korrekt, das Log sah plausibel aus, und
  * nur die Zeitstempel verrieten es. Deshalb ein Test auf die Zuordnung selbst.

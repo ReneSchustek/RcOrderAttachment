@@ -93,7 +93,7 @@ PHP-Limits (`upload_max_filesize`, `post_max_size`) bilden den absoluten Deckel.
 7. **Filename-Sanitization** entfernt CRLF, Steuerzeichen, Bidi-Override-Marker (Schutz vor Phishing-Filenames wie `cute‮gpj.exe`)
 8. **EXIF-Strip** aus Bildern (GPS-Koordinaten weg vor Speicherung)
 9. **Private Speicherung** im dedizierten Media-Folder → `/media-private/`, kein direkter HTTP-Pfad
-10. **POST-only + SameSite-Session-Cookie** auf Upload- und Remove-Endpoint. Shopware hat den CSRF-Layer mit 6.5 ersatzlos entfernt (`sw_csrf`, `CsrfPlaceholderHandler` existieren nicht mehr); Cross-Site-Schutz liefert seitdem das `SameSite=Lax`-Session-Cookie. Zusätzlich sind Remove-Tokens 128-Bit-Zufallswerte und ausschließlich in der eigenen Session gültig
+10. **POST-only + SameSite-Session-Cookie** auf Upload- und Remove-Endpoint. Shopware 6.7 hat keinen CSRF-Layer (`sw_csrf` und `CsrfPlaceholderHandler` gibt es nicht); den Cross-Site-Schutz liefert das `SameSite=Lax`-Session-Cookie. Zusätzlich sind Remove-Tokens UUIDv7 aus `Uuid::randomHex()` mit 74 Bit Zufall neben dem Zeitstempel und ausschließlich in der eigenen Session gültig
 11. **Login-Required** auf Upload-Endpoint (Guest-Checkout zulässig, wie im Shopware-Standard)
 12. **Owner-Check** beim Account-Download: Customer sieht nur Anhänge eigener Orders
 13. **Cart-Validator** erzwingt „Upload Pflicht" server-seitig, ein Umgehen per JS ist nicht möglich

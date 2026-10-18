@@ -171,7 +171,7 @@ final class ExifStripperTest extends TestCase
 
     private function writeJpegWithExif(): string
     {
-        // `imagedestroy()` ist seit PHP 8.5 deprecated und seit 8.0 wirkungslos —
+        // `imagedestroy()` bewirkt unter PHP 8 nichts, und PHP 8.5 markiert es als veraltet —
         // GC räumt das GdImage-Objekt nach dem Funktionsende selbständig auf.
         $img = imagecreatetruecolor(10, 10);
         $farbe = imagecolorallocate($img, 255, 0, 0);

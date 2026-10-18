@@ -38,12 +38,13 @@ use Throwable;
  * Confirm-Page-Endpoints erlauben Guest-Sessions (Standard-Shopware-Verhalten).
  * Der Account-Download-Endpoint erfordert dagegen einen vollwertigen Customer-Account.
  *
- * CSRF: Shopware hat den CSRF-Layer mit 6.5 ersatzlos entfernt (`sw_csrf` und
- * `CsrfPlaceholderHandler` existieren nicht mehr). Der Schutz gegen
- * Cross-Site-Requests liegt seitdem beim `SameSite=Lax`-Session-Cookie: ein
+ * CSRF: Shopware 6.7 hat keinen CSRF-Layer (`sw_csrf` und
+ * `CsrfPlaceholderHandler` fehlen). Der Schutz gegen
+ * Cross-Site-Requests liegt beim `SameSite=Lax`-Session-Cookie: ein
  * Cross-Site-POST bekommt die Session nicht mitgeschickt und läuft damit gegen
  * einen leeren PendingUploadStore. Zusätzlich sind alle mutierenden Endpoints
- * POST-only und die Tokens sind Session-gebunden (nicht erratbar, 128 Bit).
+ * POST-only und die Tokens sind UUIDv7 aus `Uuid::randomHex()` mit 74 Bit Zufall neben dem
+ * Zeitstempel, gebunden an die Session.
  */
 #[Route(defaults: [
     PlatformRequest::ATTRIBUTE_ROUTE_SCOPE => [StorefrontRouteScope::ID],

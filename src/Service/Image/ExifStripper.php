@@ -114,8 +114,8 @@ final class ExifStripper
 
             return true;
         } finally {
-            // `imagedestroy()` ist seit PHP 8.0 wirkungslos (GdImage ist ein
-            // Objekt mit normalem GC) und seit PHP 8.5 deprecated. `unset`
+            // `imagedestroy()` bewirkt unter PHP 8 nichts (GdImage ist ein
+            // Objekt mit normalem GC), und PHP 8.5 markiert es als veraltet. `unset`
             // bleibt nur der Vollständigkeit halber — der Refcount fällt
             // sowieso am Ende des try/finally-Blocks.
             unset($image);
