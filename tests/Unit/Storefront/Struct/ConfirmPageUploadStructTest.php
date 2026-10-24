@@ -10,17 +10,15 @@ use Ruhrcoder\RcOrderAttachment\Service\Session\PendingUpload;
 use Ruhrcoder\RcOrderAttachment\Storefront\Struct\ConfirmPageUploadStruct;
 
 /**
- * Unit-Tests für den Confirm-Page-Twig-Datenträger. Prüft die Hilfsberechnungen
- * (Remaining-Counter, Accept-Attribut, Has-Uploads-Flag), die das Template nutzt.
+ * Prüft die Hilfswerte, die das Template der Bestätigungsseite anzeigt: verbleibende Dateien und
+ * Bytes, das `accept`-Attribut und die Liste der Endungen. Falsche Werte zeigten dem Kunden
+ * Grenzen, die der Server anders durchsetzt.
  */
 final class ConfirmPageUploadStructTest extends TestCase
 {
     /**
-     * Was: Struct mit zwei Uploads (3 KB + 2 KB), Limits maxFiles=3, totalKb=10.
-     * Warum: Twig zeigt dem Customer „noch X Dateien / Y Bytes verfügbar" —
-     *        die Berechnung muss exakt sein, sonst sieht der Customer falsche
-     *        Grenzen.
-     * Erwartet: `hasUploads()=true`, `remainingFiles=1`, `remainingBytes=10*1024-5120`.
+     * Das Template zeigt „noch X Dateien und Y Byte frei". Bei drei erlaubten Dateien und 10 KB
+     * bleiben nach 3 KB und 2 KB eine Datei und 5 KB.
      */
     public function testRemainingCounters(): void
     {
@@ -38,12 +36,9 @@ final class ConfirmPageUploadStructTest extends TestCase
     }
 
     /**
-     * Was: `getAcceptAttribute` und `getAllowedExtensionsCsv` mit Default-Endungen.
-     * Warum: Das `accept=`-Attribut im File-Input lenkt das OS-File-Picker-Dialog
-     *        — falscher Format-String → kein Dialog-Filter oder Browser-
-     *        Inkompatibilität. CSV ist für UI-Anzeige.
-     * Erwartet: `.pdf,.jpg,.png` (mit führendem Punkt, ohne Whitespace) und
-     *           `pdf, jpg, png` (mit Komma+Space).
+     * Das `accept`-Attribut filtert den Dateidialog und verlangt Endungen mit Punkt ohne
+     * Leerzeichen; mit falschem Format filtert der Dialog nichts. Die zweite Fassung ist nur
+     * für die Anzeige.
      */
     public function testAcceptAttribute(): void
     {
@@ -57,11 +52,8 @@ final class ConfirmPageUploadStructTest extends TestCase
     }
 
     /**
-     * Was: Limit überschritten (1 Datei + 10 KB statt 1 KB).
-     * Warum: Negative Werte in `remainingFiles`/`remainingBytes` würden im
-     *        Twig-Template unsinnige Anzeigen erzeugen („noch -9216 Bytes
-     *        verfügbar"). Müssen auf 0 geclampt sein.
-     * Erwartet: Beide Counter sind 0.
+     * Grenzfall: Liegt der Bestand über der Grenze, hier 10 KB bei erlaubtem 1 KB, stünde sonst
+     * „noch -9216 Byte frei" im Template. Beide Werte bleiben bei 0 stehen.
      */
     public function testRemainingClampedAtZero(): void
     {

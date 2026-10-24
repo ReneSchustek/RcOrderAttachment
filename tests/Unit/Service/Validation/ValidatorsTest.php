@@ -18,9 +18,10 @@ use Ruhrcoder\RcOrderAttachment\Service\Validation\ValidationResult;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 /**
- * Unit-Tests für die Einzel-Validatoren der Upload-Pipeline. Deckt Whitelist,
- * Blacklist, MIME, Magic-Bytes, Größen- und Anzahl-Limits ab. Die Orchestrierung
- * wird separat in {@see UploadValidatorTest} geprüft.
+ * Prüft die einzelnen Validatoren der Uploadkette: Freigabeliste der Endungen, Sperrliste samt
+ * Skriptkennungen im Inhalt, Dateisignaturen sowie Grenzen für Größe, Gesamtgröße und Anzahl.
+ * Jeder schließt eine eigene Lücke, durch die sonst Schadcode oder Massenuploads kämen. Das
+ * Zusammenspiel prüft {@see UploadValidatorTest}.
  */
 final class ValidatorsTest extends TestCase
 {
@@ -35,8 +36,8 @@ final class ValidatorsTest extends TestCase
 
     protected function setUp(): void
     {
-        // Prozess-ID im Pfad: Der Zähler unten startet je Lauf wieder bei 0, ein gemeinsames
-        // Verzeichnis würde bei parallelen Läufen (CI-Matrix, --processes) also kollidieren.
+        // Die Prozess-ID steht im Pfad, weil der Zähler je Lauf bei 0 beginnt. Parallele Läufe
+        // (CI-Matrix, `--processes`) kämen sich in einem gemeinsamen Verzeichnis sonst in die Quere.
         $this->tempDir = sys_get_temp_dir() . '/rc-order-attachment-tests-' . getmypid();
         if (!is_dir($this->tempDir)) {
             mkdir($this->tempDir, 0o755, true);
@@ -54,12 +55,8 @@ final class ValidatorsTest extends TestCase
         $this->createdFiles = [];
     }
 
-    // --- ExtensionValidator -------------------------------------------------
-
     /**
-     * Was: Whitelist `['pdf']`, Customer lädt `drawing.pdf` hoch.
-     * Warum: Standardfall — pdf gehört zur Default-Whitelist, muss durchgehen.
-     * Erwartet: `isValid() = true`.
+     * Der Standardfall: `pdf` steht in der Freigabeliste und geht durch.
      */
     public function testExtensionWhitelistAccepts(): void
     {
@@ -74,9 +71,7 @@ final class ValidatorsTest extends TestCase
     }
 
     /**
-     * Was: Whitelist `['pdf']`, Customer lädt `.exe` hoch.
-     * Warum: Schutz vor offensichtlich nicht erwünschten Dateitypen.
-     * Erwartet: Reject mit `EXTENSION_NOT_ALLOWED`.
+     * Was nicht in der Freigabeliste steht, wird abgewiesen, hier eine `.exe`.
      */
     public function testExtensionWhitelistRejects(): void
     {
@@ -92,10 +87,8 @@ final class ValidatorsTest extends TestCase
     }
 
     /**
-     * Was: Datei ohne Endung (`noext`).
-     * Warum: Browser/CLI können Dateien ohne Extension hochladen — ohne klare
-     *        Endung können wir MIME nicht zuverlässig matchen. Reject ist sicherer.
-     * Erwartet: `EXTENSION_NOT_ALLOWED`.
+     * Ohne Endung lässt sich der Typ nicht zuverlässig zuordnen. Eine solche Datei wird
+     * abgewiesen, statt sie durchzuwinken.
      */
     public function testExtensionEmptyRejects(): void
     {
@@ -109,13 +102,9 @@ final class ValidatorsTest extends TestCase
         self::assertSame(ValidationCode::EXTENSION_NOT_ALLOWED, $result->firstCode());
     }
 
-    // --- DangerousContentValidator ------------------------------------------
-
     /**
-     * Was: Verbotene Endungen (php, exe, bat, …) auf eine harmlose Datei.
-     * Warum: Hart kodierte Blacklist muss greifen, auch wenn Admin eine
-     *        gefährliche Endung in die Whitelist eingetragen hat — defense-in-depth.
-     * Erwartet: `EXTENSION_BLACKLISTED` für jede einzelne Endung.
+     * Die fest eingebaute Sperrliste greift bei jeder einzelnen Endung, auch wenn sie in der
+     * Freigabeliste stünde und der Inhalt harmlos ist.
      */
     #[DataProvider('provideForbiddenExtensions')]
     public function testDangerousExtensionBlacklisted(string $extension): void
@@ -142,11 +131,8 @@ final class ValidatorsTest extends TestCase
     }
 
     /**
-     * Was: `.pdf`-Endung, aber Inhalt enthält `<?php`.
-     * Warum: Polyglot-File-Schutz — Angreifer könnte versuchen, PHP-Code in
-     *        eine als PDF deklarierte Datei zu schmuggeln. Script-Signatur-Check
-     *        scannt die ersten 2 KB.
-     * Erwartet: `DANGEROUS_CONTENT_DETECTED`.
+     * PHP-Code in einer Datei, die sich als PDF ausgibt, fällt an der Skriptkennung auf. Gesucht
+     * wird in den ersten 2 KiB.
      */
     public function testDangerousContentDetectsPhpTag(): void
     {
@@ -160,17 +146,13 @@ final class ValidatorsTest extends TestCase
     }
 
     /**
-     * Was: PDF-Header gefolgt von `<SCRIPT>`-Tag.
-     * Warum: XSS-Schutz in PDF-Viewern, die HTML interpretieren könnten.
-     *        PDF-Header wird vorangestellt, damit der vorher laufende
-     *        MIME-Check nicht greift (sonst wäre der MIME-Pfad „text/html" der
-     *        Reject-Grund — wir wollen aber den Signature-Pfad testen).
-     * Erwartet: `DANGEROUS_CONTENT_DETECTED`.
+     * Ein Skriptblock könnte in einem Betrachter, der HTML deutet, ausgeführt werden. Die Suche
+     * unterscheidet nicht nach Groß- und Kleinschreibung, deshalb steht hier `<SCRIPT>`.
      */
     public function testDangerousContentDetectsScriptTag(): void
     {
-        // PDF-Header voranstellen, damit finfo nicht text/html erkennt und
-        // der MIME-Pfad nicht vorher zuschlägt — Ziel ist die Signature-Erkennung.
+        // Der PDF-Kopf vorneweg hält finfo davon ab, `text/html` zu erkennen. Sonst wiese die
+        // MIME-Prüfung im selben Validator die Datei zuerst ab, und die Skriptkennung bliebe ungeprüft.
         $payload = "%PDF-1.4\n%fake\n<SCRIPT>alert(1)</SCRIPT>";
 
         $result = new ValidationResult();
@@ -183,10 +165,7 @@ final class ValidatorsTest extends TestCase
     }
 
     /**
-     * Was: PDF-Endung, Inhalt beginnt mit `#!/bin/bash`.
-     * Warum: Shebang-Signatur — Schutz vor Shell-Skripten, die als andere
-     *        Dateitypen getarnt sind.
-     * Erwartet: `DANGEROUS_CONTENT_DETECTED`.
+     * Ein Shell-Skript, das sich als anderer Dateityp tarnt, fällt an der Kennung `#!/` auf.
      */
     public function testDangerousContentDetectsShebang(): void
     {
@@ -199,13 +178,8 @@ final class ValidatorsTest extends TestCase
         self::assertSame(ValidationCode::DANGEROUS_CONTENT_DETECTED, $result->firstCode());
     }
 
-    // --- MagicBytesValidator ------------------------------------------------
-
     /**
-     * Was: PDF mit korrektem `%PDF-1.7`-Header.
-     * Warum: Happy-Path für die Magic-Bytes-Validierung — echte PDFs müssen
-     *        durchgehen.
-     * Erwartet: `isValid() = true`.
+     * Ein echtes PDF mit `%PDF`-Kopf geht durch.
      */
     public function testMagicBytesPdfValid(): void
     {
@@ -219,10 +193,7 @@ final class ValidatorsTest extends TestCase
     }
 
     /**
-     * Was: `.pdf`-Endung, aber Inhalt ist Klartext ohne `%PDF`-Header.
-     * Warum: Schutz vor Extension-Spoofing. Endung allein darf nicht reichen,
-     *        die Magic-Bytes müssen den Typ bestätigen.
-     * Erwartet: `MAGIC_BYTES_MISMATCH`.
+     * Die Endung allein reicht nicht, die Signatur am Dateianfang muss den Typ bestätigen.
      */
     public function testMagicBytesPdfMismatch(): void
     {
@@ -236,9 +207,8 @@ final class ValidatorsTest extends TestCase
     }
 
     /**
-     * Was: PNG mit korrektem 8-Byte-Header.
-     * Warum: PNG ist häufigstes Customer-Foto-Format. Header-Match muss funktionieren.
-     * Erwartet: `isValid() = true`.
+     * PNG ist neben JPEG das gängigste Fotoformat. Seine Signatur ist acht Byte lang und
+     * enthält `\r\n` und `\x1a`; ein echter Kopf muss trotzdem als Ganzes erkannt werden.
      */
     public function testMagicBytesPng(): void
     {
@@ -253,11 +223,8 @@ final class ValidatorsTest extends TestCase
     }
 
     /**
-     * Was: Endung `.dxf` (CAD-Format) ohne registrierte Magic-Bytes.
-     * Warum: Für Endungen ohne stabile Signatur (CAD-Reintext, TXT, CSV)
-     *        darf der Validator nicht ablehnen — sonst wären zulässige
-     *        Whitelist-Endungen unbenutzbar.
-     * Erwartet: `isValid() = true` (Validator springt früh raus).
+     * Endungen ohne feste Signatur wie DXF, TXT oder CSV lehnt der Validator nicht ab, sonst
+     * wären sie trotz Freigabe unbenutzbar.
      */
     public function testMagicBytesUnknownExtensionPasses(): void
     {
@@ -270,12 +237,8 @@ final class ValidatorsTest extends TestCase
         self::assertTrue($result->isValid());
     }
 
-    // --- FileSizeValidator --------------------------------------------------
-
     /**
-     * Was: Datei 1 KB, Limit 2 KB.
-     * Warum: Innerhalb des Limits darf nichts blockieren.
-     * Erwartet: `isValid() = true`.
+     * 1 KB unter einer Grenze von 2 KB geht durch.
      */
     public function testFileSizeWithinLimit(): void
     {
@@ -290,10 +253,8 @@ final class ValidatorsTest extends TestCase
     }
 
     /**
-     * Was: Datei 3 KB, Limit 2 KB.
-     * Warum: Über dem Limit muss zuverlässig abgelehnt werden — sonst sind
-     *        Disk-Quota und PHP-Memory-Limit nicht geschützt.
-     * Erwartet: `FILE_SIZE_EXCEEDED`.
+     * 3000 Byte liegen über 2 KB (2048 Byte) und werden abgewiesen. Ohne Grenze wären Platte und
+     * Speicherlimit von PHP ungeschützt.
      */
     public function testFileSizeExceeded(): void
     {
@@ -308,11 +269,7 @@ final class ValidatorsTest extends TestCase
     }
 
     /**
-     * Was: Datei mit leerem Inhalt (0 Bytes).
-     * Warum: Customer könnte versehentlich auf „Upload" klicken ohne Datei.
-     *        Wir wollen explizit `EMPTY_UPLOAD` melden statt verwirrenden
-     *        Size-/MIME-Folgefehlern.
-     * Erwartet: `EMPTY_UPLOAD`.
+     * Eine leere Datei meldet `EMPTY_UPLOAD` statt verwirrender Folgefehler zu Größe oder Typ.
      */
     public function testEmptyFileRejected(): void
     {
@@ -326,12 +283,8 @@ final class ValidatorsTest extends TestCase
         self::assertSame(ValidationCode::EMPTY_UPLOAD, $result->firstCode());
     }
 
-    // --- TotalSizeValidator -------------------------------------------------
-
     /**
-     * Was: Bereits 1 KB im Store, neue Datei 1 KB, Limit 3 KB.
-     * Warum: Projektion (1+1=2) liegt unter Limit (3) — Upload muss durchgehen.
-     * Erwartet: `isValid() = true`.
+     * Gezählt wird die Summe nach dem Upload: 1 KB vorhanden plus 1 KB neu bleibt unter 3 KB.
      */
     public function testTotalSizeAccepted(): void
     {
@@ -347,10 +300,8 @@ final class ValidatorsTest extends TestCase
     }
 
     /**
-     * Was: Bereits 2 KB im Store, neue Datei 2 KB, Limit 3 KB.
-     * Warum: Projektion (2+2=4) übersteigt Limit (3) — Upload muss
-     *        abgelehnt werden. Schutz vor „Dutzend kleiner Uploads"-DoS.
-     * Erwartet: `TOTAL_SIZE_EXCEEDED`.
+     * 2 KB vorhanden plus 2 KB neu übersteigen 3 KB, obwohl jede Datei für sich unter der Grenze
+     * liegt. So lässt sich die Grenze nicht mit vielen kleinen Uploads umgehen.
      */
     public function testTotalSizeExceeded(): void
     {
@@ -365,12 +316,8 @@ final class ValidatorsTest extends TestCase
         self::assertSame(ValidationCode::TOTAL_SIZE_EXCEEDED, $result->firstCode());
     }
 
-    // --- FileCountValidator -------------------------------------------------
-
     /**
-     * Was: Bereits 2 Dateien im Store, Limit 5.
-     * Warum: Innerhalb der Anzahl-Quote darf nichts blockieren.
-     * Erwartet: `isValid() = true`.
+     * Zwei vorhandene Dateien bei einer Grenze von fünf lassen Platz.
      */
     public function testFileCountWithinLimit(): void
     {
@@ -385,10 +332,8 @@ final class ValidatorsTest extends TestCase
     }
 
     /**
-     * Was: Bereits 5 Dateien im Store, Limit 5.
-     * Warum: `>=`-Vergleich — der neue Upload würde Slot 6 belegen, also voll.
-     *        Schutz vor unbegrenzter Datei-Anzahl pro Bestellung.
-     * Erwartet: `FILE_COUNT_EXCEEDED`.
+     * Grenzfall: Bei fünf vorhandenen Dateien und einer Grenze von fünf wäre der neue Upload der
+     * sechste. Der Vergleich muss deshalb `>=` sein, nicht `>`.
      */
     public function testFileCountExceeded(): void
     {
@@ -401,8 +346,6 @@ final class ValidatorsTest extends TestCase
 
         self::assertSame(ValidationCode::FILE_COUNT_EXCEEDED, $result->firstCode());
     }
-
-    // --- Helpers ------------------------------------------------------------
 
     private function file(string $name, string $contents): UploadedFile
     {

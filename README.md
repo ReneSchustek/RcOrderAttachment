@@ -12,7 +12,7 @@ Nicht abgeschlossene Uploads werden automatisch nach einer konfigurierbaren Fris
 
 - Shopware **6.7** oder **6.8**
 - PHP **8.2+**
-- GD- oder Imagick-PHP-Extension (für EXIF-Strip, optional)
+- GD-PHP-Extension (für den EXIF-Strip; ohne sie bleiben Bilder unverändert), die exif-Extension für die Ausrichtung von Hochkantfotos
 
 ## Installation
 
@@ -91,12 +91,12 @@ PHP-Limits (`upload_max_filesize`, `post_max_size`) bilden den absoluten Deckel.
 5. **Script-Signaturen-Scan** der ersten 2 KB (`<?php`, `<script`, Shebang-Lines) als Schutz gegen Polyglot-Dateien
 6. **Datei-Umbenennung** auf `rc-<uuid>.<ext>`; der Original-Filename steht nur in der DB, nie im Filesystem-Pfad
 7. **Filename-Sanitization** entfernt CRLF, Steuerzeichen, Bidi-Override-Marker (Schutz vor Phishing-Filenames wie `cute‮gpj.exe`)
-8. **EXIF-Strip** aus Bildern (GPS-Koordinaten weg vor Speicherung)
+8. **EXIF-Strip** aus JPEG, PNG und WebP (GPS-Koordinaten weg vor Speicherung); die EXIF-Ausrichtung wird vorher ins Bild übernommen, damit Hochkantfotos aufrecht bleiben. HEIC bleibt unverändert (GD liest es nicht)
 9. **Private Speicherung** im dedizierten Media-Folder → `/media-private/`, kein direkter HTTP-Pfad
 10. **POST-only + SameSite-Session-Cookie** auf Upload- und Remove-Endpoint. Shopware 6.7 hat keinen CSRF-Layer (`sw_csrf` und `CsrfPlaceholderHandler` gibt es nicht); den Cross-Site-Schutz liefert das `SameSite=Lax`-Session-Cookie. Zusätzlich sind Remove-Tokens UUIDv7 aus `Uuid::randomHex()` mit 74 Bit Zufall neben dem Zeitstempel und ausschließlich in der eigenen Session gültig
 11. **Login-Required** auf Upload-Endpoint (Guest-Checkout zulässig, wie im Shopware-Standard)
 12. **Owner-Check** beim Account-Download: Customer sieht nur Anhänge eigener Orders
-13. **Cart-Validator** erzwingt „Upload Pflicht" server-seitig, ein Umgehen per JS ist nicht möglich
+13. **Cart-Validator** erzwingt „Upload Pflicht" server-seitig, ein Umgehen per JS ist nicht möglich. Er greift nur bei Storefront-Routen (Route-Scope `storefront`); Bestellungen über Store-API und Admin bleiben frei, weil es dort keine Upload-Seite gibt
 14. **Rate-Limiting** pro Session (Cache-basiert, konfigurierbar)
 15. **Order-Version-Filter** verhindert Draft-Version-Vermischung
 16. **Sichere Response-Header** (`X-Content-Type-Options`, CSP, Referrer-Policy, X-Frame-Options) auf allen JSON-Endpoints
@@ -219,7 +219,7 @@ Wer im Mail-Text auf die Anhänge hinweisen möchte, kann das Standard-Snippet s
 - **Mail-Anhang-Memory**: Anhänge werden als String-Blob ins `binAttachments`-Array gelegt. Peak-Memory beim Mail-Versand entspricht der Summe der Anhang-Größen. Bei Default-Konfig (40 MB Gesamt) unkritisch. `php-fpm` `memory_limit` entsprechend dimensionieren.
 - **PDF-JavaScript wird nicht gestrippt**: PDFs mit eingebettetem JS gehen 1:1 weiter. Mitarbeiter-PDF-Reader muss sandboxed sein. Plugin-eigener Strip wäre `qpdf`-abhängig.
 - **Antivirus-Scan ist nicht integriert**: EICAR-Test-Patterns gehen durch. Bei kritischen Umgebungen ClamAV als Webserver-Modul vorschalten.
-- **Multi-SC-Whitelist**: Der `MediaFileExtensionWhitelistEvent` hat keinen SC-Kontext. Pro-SC-unterschiedliche Endungs-Whitelists werden zur globalen Vereinigungs-Menge.
+- **Hochkantfotos kosten mehr**: Das Drehen braucht eine zweite Bildkopie. Gemessen (`benchmarks/`): 48 MP hochkant 1,1 s und 437 MB Prozessspeicher statt 0,56 s und 254 MB; 12-MP-Fotos bleiben weit darunter.
 - **Customer-Account-Wechsel in derselben Browser-Session**: Pending-Uploads sind session-basiert, nicht an den Customer gebunden, und würden deshalb „mitwandern". Das ist ein sehr seltener Edge-Case.
 - **Mail-Retry-Verhalten**: Bei Mail-Anhang-Failure (z. B. Storage-Down beim Mail-Versand) wird die Mail OHNE den betroffenen Anhang versendet. Das Custom-Field `rc_order_attachment_mail_status` markiert den Befund (`partial_failure` / `failed`). Bei aktiviertem `enableMailRetry` (opt-in) wird ein Retry über die Messenger-Queue dispatcht; der eigentliche Re-Send der Mail bleibt bewusst Operator-Aufgabe, damit Kunden keine Duplikat-Mails erhalten.
 
@@ -246,6 +246,20 @@ Unit-Tests laufen lokal ohne lebende Shopware-Instanz (`vendor/bin/phpunit` mit 
 DATABASE_URL=mysql://user:pass@host:3306/shopware_test APP_ENV=test \
   vendor/bin/phpunit -c custom/plugins/RcOrderAttachment/phpunit.xml.dist --testsuite Integration
 ```
+
+## Geschwindigkeit messen
+
+Das Messprojekt unter `benchmarks/` läuft getrennt vom Testlauf und gehört in kein Ausrollpaket
+(`export-ignore`). Ein Lauf vom Arbeitsplatz misst gegen eine Testinstanz:
+
+```bash
+bash benchmarks/run.sh <instanz> <rechner>
+```
+
+Er erzeugt einmalig Testfotos mit 12, 24 und 48 Megapixeln, misst das Hochladen über den Endpunkt
+der Storefront, das Entfernen der Metadaten mit PHPBench und den Speicher des Prozesses dabei. Der
+Speicher wird eigens gemessen: Ist GD extern eingebunden, zählt PHP die Pixel nicht mit, und
+`memory_limit` greift nicht. Jeder Lauf hängt seine Werte an `benchmarks/results.csv` an.
 
 ## Lizenz
 

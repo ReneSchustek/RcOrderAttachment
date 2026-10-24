@@ -14,34 +14,28 @@ use RuntimeException;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 
 /**
- * Unit-Tests für den Cache-basierten Rate-Limiter — inkl. Fail-Open bei
- * Cache-Fehlern, Sliding-Window-Reset, Limit-Boundary.
+ * Prüft die Uploadbremse je Sitzung: Grenze, Trennung der Sitzungen, Abschalten und das
+ * Durchlassen bei Cachefehlern. Sie soll Bots bremsen, ohne je einen echten Kunden auszusperren.
  */
 final class UploadRateLimiterTest extends TestCase
 {
     /**
-     * Was: `rateLimitPerMinute = 0` (Rate-Limiter deaktiviert).
-     * Warum: Operator kann den Limiter abschalten, falls externer WAF/Proxy
-     *        die Rate-Limit-Verantwortung übernimmt. Plugin darf dann nichts
-     *        blockieren.
-     * Erwartet: 100 aufeinanderfolgende `consume` liefern alle `true`.
+     * Mit 0 ist die Bremse aus, etwa wenn eine vorgeschaltete Firewall das übernimmt. 100 Aufrufe
+     * liegen weit über jeder sinnvollen Grenze und gehen trotzdem alle durch.
      */
     public function testFailOpenWhenDisabled(): void
     {
         $limiter = new UploadRateLimiter(new ArrayAdapter(), new NullLogger());
         $config = $this->config(rateLimitPerMinute: 0);
 
-        // Disabled: jeder Aufruf darf durch.
         for ($i = 0; $i < 100; $i++) {
             self::assertTrue($limiter->consume('session-x', $config));
         }
     }
 
     /**
-     * Was: Konfiguriertes Limit von 3, drei Aufrufe.
-     * Warum: Innerhalb des Limits müssen alle Anfragen durch — sonst würden
-     *        legitime Customer fälschlich blockiert.
-     * Erwartet: 3× `true`.
+     * Bis einschließlich zur Grenze geht jeder Aufruf durch. Ein Fehler um eins sperrte echte
+     * Kunden beim letzten erlaubten Upload aus.
      */
     public function testAllowsUpToLimit(): void
     {
@@ -54,10 +48,8 @@ final class UploadRateLimiterTest extends TestCase
     }
 
     /**
-     * Was: Limit 2, vier Aufrufe.
-     * Warum: Schutz gegen Bot-DoS — über dem Limit muss zuverlässig
-     *        zurückgewiesen werden.
-     * Erwartet: 2× `true`, danach 2× `false`.
+     * Über der Grenze wird jeder weitere Aufruf abgewiesen, nicht nur der erste, sonst käme
+     * ein Bot mit jedem zweiten Versuch durch.
      */
     public function testRejectsBeyondLimit(): void
     {
@@ -71,10 +63,30 @@ final class UploadRateLimiterTest extends TestCase
     }
 
     /**
-     * Was: Zwei verschiedene Session-IDs, beide treffen das Limit 1.
-     * Warum: Limit ist pro Session, nicht global — ein Bot in Session-A darf
-     *        nicht legitime Customer in Session-B aussperren.
-     * Erwartet: Session-A blockiert nach 1, Session-B unabhängig weiterhin OK.
+     * Das Fenster beginnt beim ersten Upload und verlängert sich nicht. Setzte jeder Upload die
+     * Ablaufzeit neu, bliebe gesperrt, wer alle 30 Sekunden hochlädt, hier bis Sekunde 90 statt
+     * bis Sekunde 60.
+     */
+    public function testTheWindowStartsWithTheFirstUploadAndDoesNotExtend(): void
+    {
+        $now = 1000;
+        $limiter = new UploadRateLimiter(new ArrayAdapter(), new NullLogger(), static function () use (&$now): int {
+            return $now;
+        });
+        $config = $this->config(rateLimitPerMinute: 2);
+
+        self::assertTrue($limiter->consume('session-x', $config));
+        $now = 1030;
+        self::assertTrue($limiter->consume('session-x', $config));
+        $now = 1059;
+        self::assertFalse($limiter->consume('session-x', $config), 'Innerhalb der ersten Minute gilt die Grenze.');
+        $now = 1060;
+        self::assertTrue($limiter->consume('session-x', $config), 'Eine Minute nach dem ersten Upload beginnt ein neues Fenster.');
+    }
+
+    /**
+     * Die Grenze gilt je Sitzung. Ein Bot in der einen Sitzung darf Kunden in einer anderen nicht
+     * aussperren.
      */
     public function testIsolatesPerSession(): void
     {
@@ -84,16 +96,12 @@ final class UploadRateLimiterTest extends TestCase
         self::assertTrue($limiter->consume('session-a', $config));
         self::assertFalse($limiter->consume('session-a', $config));
 
-        // Andere Session ist unabhängig.
         self::assertTrue($limiter->consume('session-b', $config));
     }
 
     /**
-     * Was: Cache-Pool wirft `RuntimeException` (z. B. Redis down).
-     * Warum: Fail-Open-Strategie — der Cache-Limit ist nice-to-have, der
-     *        eigentliche Schutz sitzt im Webserver/WAF. Cache-Ausfall darf
-     *        legitime Customer NICHT blockieren.
-     * Erwartet: `true` trotz Exception (Aufruf wird durchgelassen).
+     * Fällt der Cache aus, etwa Redis, geht der Aufruf durch. Die Bremse ist eine Ergänzung,
+     * der eigentliche Schutz sitzt im Webserver, und ein Cacheausfall darf keine Kunden aussperren.
      */
     public function testFailOpenOnCacheException(): void
     {
@@ -103,15 +111,12 @@ final class UploadRateLimiterTest extends TestCase
         $limiter = new UploadRateLimiter($brokenCache, new NullLogger());
         $config = $this->config(rateLimitPerMinute: 1);
 
-        // Fail-Open: bei Cache-Fehler durchlassen, nicht blockieren.
         self::assertTrue($limiter->consume('session-x', $config));
     }
 
     /**
-     * Was: Cache-Miss bei neuem Session-Key.
-     * Warum: Beim ersten Upload existiert noch kein Counter. Cache-Item wird
-     *        mit `set(1)` initialisiert und mit 60-Sekunden-TTL angelegt.
-     * Erwartet: `set(1)` mit `expiresAfter(60)`, `save()`, Rückgabe `true`.
+     * Beim ersten Upload einer Sitzung gibt es noch keinen Zähler. Er beginnt bei 1 und läuft
+     * nach 60 Sekunden ab, der Länge des Fensters, auf das sich „je Minute" bezieht.
      */
     public function testItemMissReturnsTrue(): void
     {
@@ -119,12 +124,13 @@ final class UploadRateLimiterTest extends TestCase
         $item = $this->createMock(CacheItemInterface::class);
         $item->method('isHit')->willReturn(false);
         $item->method('get')->willReturn(null);
-        $item->expects(self::once())->method('set')->with(1)->willReturnSelf();
+        // Gespeichert werden Zahl und Anfang des Fensters; das neue Fenster läuft volle 60 Sekunden.
+        $item->expects(self::once())->method('set')->with([1, 1000])->willReturnSelf();
         $item->expects(self::once())->method('expiresAfter')->with(60)->willReturnSelf();
         $cache->method('getItem')->willReturn($item);
         $cache->expects(self::once())->method('save')->with($item);
 
-        $limiter = new UploadRateLimiter($cache, new NullLogger());
+        $limiter = new UploadRateLimiter($cache, new NullLogger(), static fn (): int => 1000);
 
         self::assertTrue($limiter->consume('session-x', $this->config(rateLimitPerMinute: 5)));
     }

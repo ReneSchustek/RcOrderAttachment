@@ -15,17 +15,20 @@ use Symfony\Component\Messenger\Stamp\DelayStamp;
 use Throwable;
 
 /**
- * Verknüpft Customer-Uploads nach einem fehlgeschlagenen Order-Placement-Attach
- * erneut mit der Bestellung.
+ * Verknüpft die Uploads des Kunden erneut mit der Bestellung, wenn das beim Bestellabschluss
+ * gescheitert ist.
  *
- * Idempotent: bereits verknüpfte Media werden übersprungen (ein Retry darf nach
- * einem Teil-Erfolg keine Doppel-Zeilen erzeugen). Verbleibende Fehler werden mit
- * `attempt + 1` und Exponential-Backoff erneut eingeplant; ab {@see MAX_ATTEMPTS}
- * final geloggt, damit der Betrieb die Order manuell nacharbeiten kann.
+ * Schon verknüpfte Medien überspringt der Handler, damit ein Versuch nach einem Teilerfolg keine
+ * doppelten Zeilen anlegt. Was weiter scheitert, plant er mit `attempt + 1` und wachsender
+ * Wartezeit neu ein; nach {@see MAX_ATTEMPTS} Versuchen schreibt er einen Fehler ins Protokoll,
+ * damit der Betrieb die Bestellung von Hand nacharbeitet.
  */
 #[AsMessageHandler]
 final class RetryOrderAttachmentLinkHandler
 {
+    // Dieselben Zahlen wie beim Mail-Wiederholversuch: Fünf Versuche im Abstand von 1, 2, 4 und
+    // 8 Minuten überbrücken eine Viertelstunde Datenbankstörung. Die Obergrenze von einer Stunde
+    // greift erst, wenn MAX_ATTEMPTS über sieben steigt.
     public const MAX_ATTEMPTS = 5;
 
     private const BASE_DELAY_MS = 60_000;
@@ -44,6 +47,7 @@ final class RetryOrderAttachmentLinkHandler
     {
         $context = Context::createCLIContext();
 
+        // Ein früherer Versuch kann einen Teil schon verknüpft haben.
         $alreadyLinked = [];
         foreach ($this->loader->loadForOrder($message->orderId, $context) as $attachment) {
             $alreadyLinked[$attachment->getMediaId()] = true;

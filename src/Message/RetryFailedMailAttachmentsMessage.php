@@ -7,17 +7,16 @@ namespace Ruhrcoder\RcOrderAttachment\Message;
 use Shopware\Core\Framework\MessageQueue\AsyncMessageInterface;
 
 /**
- * Trigger für einen späteren erneuten Versand der Bestätigungs-Mail-Anhänge.
+ * Auftrag, die Anhänge einer Bestellbestätigung später erneut auf Lesbarkeit zu prüfen und den
+ * Anhangstatus der Bestellung nachzutragen. Die Mail selbst verschickt der Handler nicht.
  *
- * Nicht das Original-Event, sondern ein leichtgewichtiger Marker — der Handler
- * baut die Mail beim Retry frisch auf, damit kein Customer-Inhalt durch die
- * Queue persistiert wird.
+ * Die Nachricht trägt nur die Bestell-ID und die Versuchsnummer, nicht das ursprüngliche
+ * Ereignis. So liegt kein Inhalt des Kunden in der Warteschlange.
  *
- * Implementiert bewusst {@see AsyncMessageInterface}: Shopware routet damit nach `async`.
- * Ohne diese Zuordnung behandelt Symfony die Nachricht **synchron** — der `DelayStamp` des
- * Handlers wäre wirkungslos, alle Versuche liefen im selben Request ab, und der
- * Exponential-Backoff, der dem Storage Zeit zur Erholung geben soll, verpuffte in
- * Millisekunden. Genau so gemessen, bevor dieses Interface dran war.
+ * {@see AsyncMessageInterface} leitet die Nachricht auf den Transport `async`. Ohne diese
+ * Zuordnung behandelt Symfony sie synchron: Der `DelayStamp` des Handlers bliebe wirkungslos, alle
+ * Versuche liefen in derselben Anfrage ab, und die wachsende Wartezeit, die dem Speicher Zeit zur
+ * Erholung geben soll, verpuffte in Millisekunden.
  */
 final readonly class RetryFailedMailAttachmentsMessage implements AsyncMessageInterface
 {

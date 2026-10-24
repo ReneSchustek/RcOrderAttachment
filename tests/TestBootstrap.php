@@ -3,13 +3,13 @@
 declare(strict_types=1);
 
 /*
- * Test-Bootstrap. Erst lokales `vendor/`-Autoloader (Plugin-Standalone),
- * dann der Shopware-Core-Autoloader von einem über das Plugin gelagerten
- * Composer-Setup (`../../..`). Falls beides fehlt, springt der eigene
- * PSR-4-Loader für `Ruhrcoder\\RcOrderAttachment\\` als Fallback ein.
+ * Lädt zuerst den Autoloader aus dem eigenen `vendor/` (Plugin ohne Shop), dann den der
+ * umgebenden Shopware-Installation vier Ebenen höher. Der eigene PSR-4-Loader für
+ * `Ruhrcoder\\RcOrderAttachment\\` ist immer registriert und greift, wenn keiner der beiden
+ * die Klasse kennt.
  *
- * Damit laufen die Unit-Tests sowohl lokal mit `vendor/bin/phpunit` als
- * auch auf dem Server im Shopware-Test-Kontext.
+ * So laufen die Unit-Tests lokal mit `vendor/bin/phpunit` ebenso wie auf dem Server im
+ * Shopware-Testkontext.
  */
 
 $pluginAutoloader = dirname(__DIR__) . '/vendor/autoload.php';
@@ -41,44 +41,37 @@ spl_autoload_register(static function (string $class): void {
 });
 
 /*
- * Shopware-Root suchen. Der Kernel-Bootstrap darf NUR laufen, wenn das Plugin
- * tatsächlich innerhalb einer Shopware-Installation getestet wird.
+ * Der Kernel darf nur booten, wenn das Plugin in einer Shopware-Installation liegt.
  *
- * Nicht auf `class_exists(TestBootstrapper::class)` prüfen: `shopware/core` ist
- * eine `require`-Abhängigkeit, die Klasse existiert also auch im Standalone-
- * Checkout (CI, frischer `composer install`). Der Bootstrap versucht dann einen
- * Shop zu booten, den es dort nicht gibt, und stirbt mit
- * „Could not find plugin: RcOrderAttachment" — noch bevor ein einziger
+ * `class_exists(TestBootstrapper::class)` taugt als Prüfung nicht, weil `shopware/core` eine
+ * `require`-Abhängigkeit ist und die Klasse auch im eigenständigen Checkout existiert (CI,
+ * frischer `composer install`). Der Bootstrap versuchte dort einen Shop zu booten, den es nicht
+ * gibt, und bräche mit „Could not find plugin: RcOrderAttachment" ab, bevor ein einziger
  * Unit-Test läuft.
  *
- * Kandidaten in dieser Reihenfolge:
- *   1. Aufruf-Verzeichnis — Konvention: Integration-Tests werden aus dem
- *      Shopware-Root gestartet (`vendor/bin/phpunit -c custom/plugins/…`).
- *   2. Vier Ebenen über `tests/` — greift bei `custom/plugins/<Plugin>/tests/`,
- *      solange der Pfad kein Symlink ist.
+ * Gesucht wird zuerst im Aufrufverzeichnis, weil Integrationstests aus dem Wurzelverzeichnis
+ * des Shops gestartet werden (`vendor/bin/phpunit -c custom/plugins/…`). Danach vier Ebenen
+ * über `tests/`; das trifft `custom/plugins/<Plugin>/tests/`, solange der Pfad kein Symlink ist.
  */
 $shopwareRoot = null;
 foreach ([getcwd(), \dirname(__DIR__, 4)] as $candidate) {
-    if (\is_string($candidate) && $candidate !== '' && is_file($candidate . '/config/bundles.php')) {
+    // `getcwd()` kann false liefern, deshalb die Typprüfung. Einen leeren Text liefert es nie,
+    // ein Vergleich darauf entfällt.
+    if (\is_string($candidate) && is_file($candidate . '/config/bundles.php')) {
         $shopwareRoot = $candidate;
         break;
     }
 }
 
-// Kernel-Lifecycle vorbereiten. KernelTestBehaviour/IntegrationTestBehaviour
-// erwarten, dass `KernelLifecycleManager::prepare($classLoader)` aufgerufen
-// wurde, bevor der erste Test läuft. Im Standalone-Unit-Lauf bleibt das ein
-// No-op — die Unit-Tests brauchen nur den Composer-Autoloader.
+// `KernelTestBehaviour` und `IntegrationTestBehaviour` erwarten, dass der Kernel vor dem
+// ersten Test vorbereitet ist. Ohne Shopware-Installation entfällt das, die Unit-Tests
+// brauchen dann nur den Composer-Autoloader.
 if ($shopwareRoot !== null && class_exists(\Shopware\Core\TestBootstrapper::class)) {
-    // KERNEL_CLASS-Pin: DDEV-Shopware-Setup hat in `/var/www/html/.env.test`
-    // `KERNEL_CLASS=App\Kernel` stehen — `App\Kernel` existiert in dieser
-    // Setup-Variante nicht (Production nutzt `KernelFactory::create()` ohne
-    // App-Kernel). `Shopware\Core\Kernel` ist die konkrete Default-Klasse, die
-    // `KernelFactory::$kernelClass` zeigt. Wir setzen sie früh, damit Dotenv
-    // (override=false) sie nicht überschreibt.
-    // Robuster Pin: wenn der KERNEL_CLASS-Wert nicht autoloadable ist (klassischer
-    // DDEV-Fall: `.env.test` setzt `App\Kernel`, das nicht existiert; oder
-    // CLI-Aufruf hat den Backslash verschluckt), fallback auf `Shopware\Core\Kernel`.
+    // Die DDEV-Installation setzt in `/var/www/html/.env.test` `KERNEL_CLASS=App\Kernel`, eine
+    // Klasse, die es dort nicht gibt. Ist der Wert leer oder nicht ladbar (auch wenn die
+    // Kommandozeile den Backslash verschluckt), gilt `Shopware\Core\Kernel`, die Vorgabe von
+    // `KernelFactory::$kernelClass`. Der Wert steht fest, bevor Dotenv lädt, das ohne
+    // `override` nichts schon Gesetztes überschreibt.
     $kernelClassFromEnv = getenv('KERNEL_CLASS');
     $currentKernelClass = $kernelClassFromEnv !== false && $kernelClassFromEnv !== ''
         ? $kernelClassFromEnv
@@ -91,14 +84,17 @@ if ($shopwareRoot !== null && class_exists(\Shopware\Core\TestBootstrapper::clas
 
     $bootstrapper = (new \Shopware\Core\TestBootstrapper())
         ->setPlatformEmbedded(false)
-        ->addCallingPlugin();  // RcOrderAttachment im Test-Kernel registrieren. Beim ersten Bootstrap installiert TestBootstrapper das Plugin automatisch (siehe `bootstrap()` -> `installPlugins()`); danach ist es aktiv und die services.xml wird geladen. `setForceInstallPlugins(true)` triggert einen uninstall->install-Zyklus, der den Plugin-eigenen uninstall()-Pfad durchläuft — der wiederum `database_connection` braucht (Service-Name-Konflikt im Test-Kernel) und nicht idempotent ist. Daher hier weglassen.
+        // Beim ersten Bootstrap installiert `TestBootstrapper` das aufrufende Plugin selbst
+        // (`bootstrap()` ruft `installPlugins()`), danach ist es aktiv. `setForceInstallPlugins(true)`
+        // fehlt absichtlich: Es löst Deinstallation und Installation aus, und `uninstall()` des
+        // Plugins braucht `database_connection` (Namenskonflikt im Testkernel) und ist nicht
+        // wiederholbar.
+        ->addCallingPlugin();
 
-    // ProjectDir explizit auf das gefundene Shopware-Root setzen.
-    // Wichtig: `KernelFactory::getProjectDir()` liest `$_SERVER['PROJECT_ROOT']`
-    // *vor* dem Reflection-Fallback (der sonst den Pfad der KernelFactory-Klasse
-    // selbst nimmt — bei composer-installiertem vendor zeigt das auf den
-    // Plugin-Pfad, nicht auf das Shopware-Root). `setProjectDir` auf dem
-    // TestBootstrapper allein reicht nicht — die env-Variable ist die Quelle.
+    // `setProjectDir()` allein reicht nicht, weil `KernelFactory::getProjectDir()` zuerst
+    // `$_SERVER['PROJECT_ROOT']` liest. Fehlt die Variable, leitet es den Pfad per Reflection
+    // aus dem Ort der Klasse ab, und bei einem per Composer installierten `vendor/` des Plugins
+    // zeigt der ins Plugin statt in die Shopware-Installation.
     $bootstrapper->setProjectDir($shopwareRoot);
     $_SERVER['PROJECT_ROOT'] = $shopwareRoot;
     $_ENV['PROJECT_ROOT'] = $shopwareRoot;

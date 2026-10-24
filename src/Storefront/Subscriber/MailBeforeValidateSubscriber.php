@@ -22,29 +22,23 @@ use Symfony\Component\Messenger\MessageBusInterface;
 use Throwable;
 
 /**
- * Hängt die zur Bestellung gehörenden Customer-Uploads an konfigurierte
- * Mail-Templates (Default: `order_confirmation_mail`).
+ * Hängt die Uploads einer Bestellung an die freigegebenen Mailvorlagen, als Vorgabe nur an
+ * `order_confirmation_mail`.
  *
- * Drei Gates müssen passieren:
- *   1. Template-Daten enthalten eine `order`
- *   2. Plugin aktiv UND `attachToConfirmationMail` aktiv
- *   3. Mail-Template-Technical-Name in der Whitelist (oder Whitelist leer = alle)
+ * Angehängt wird nur, wenn die Vorlagendaten eine Bestellung enthalten, Plugin und
+ * `attachToConfirmationMail` eingeschaltet sind und die Vorlage in der Liste erlaubter Vorlagen
+ * steht (eine leere Liste erlaubt alle). Die Liste verhindert, dass jede Statusmail zur Bestellung
+ * (Versand, Storno, Erstattung) die Dateien erneut mitschickt und eine Bestellung mit 20 MB
+ * Anhängen jedes Postfach mehrfach füllt.
  *
- * Die Whitelist verhindert, dass Anhänge bei jeder Order-State-Change-Mail
- * (Versand, Storno, Rückerstattung) erneut mitgeschickt werden — sonst würde
- * eine Bestellung mit 20 MB Anhängen die Mitarbeiter-Mailbox sprengen.
+ * Shopware gibt im Ereignis keinen Schlüssel `mailTemplate` mit, sondern nur `eventName` in den
+ * Vorlagendaten und `templateId` in den Maildaten. Der {@see MailTemplateTypeResolverInterface}
+ * ermittelt daraus den `technicalName`. Würde nur `eventName` geprüft, träfe die Vorgabe
+ * `order_confirmation_mail` nie, und kein Anhang ginge hinaus.
  *
- * Gate 3 im Detail: Shopware liefert im Event KEINEN `mailTemplate`-Key in den
- * Template-Daten — nur `eventName` (Flow-Event) und in den Mail-Daten die
- * `templateId`. Der {@see MailTemplateTypeResolverInterface} löst daraus den
- * `technicalName` auf. Wird nur gegen `eventName` geprüft, matcht der
- * Default-Whitelist-Wert `order_confirmation_mail` niemals und es geht kein
- * einziger Anhang raus.
- *
- * Resultat des Mail-Anhang-Versuchs landet als Marker im Custom-Field
- * `rc_order_attachment_mail_status` (siehe {@see MailAttachmentStatusTrackerInterface}).
- * Bei aktivem Opt-in `enableMailRetry` wird bei Teil-/Voll-Fehler ein
- * {@see RetryFailedMailAttachmentsMessage} dispatcht.
+ * Das Ergebnis landet im Zusatzfeld `rc_order_attachment_mail_status` (siehe
+ * {@see MailAttachmentStatusTrackerInterface}). Ist `enableMailRetry` eingeschaltet, plant ein
+ * ganzer oder teilweiser Fehlschlag eine {@see RetryFailedMailAttachmentsMessage} ein.
  */
 final class MailBeforeValidateSubscriber implements EventSubscriberInterface
 {
@@ -81,12 +75,9 @@ final class MailBeforeValidateSubscriber implements EventSubscriberInterface
             return;
         }
 
-        // Whitelist-Check: Anhänge nur an konfigurierte Mail-Templates hängen.
-        // Schützt vor Mehrfach-Versand bei Order-State-Changes (Versand, Storno).
-        //
-        // Zwei Kandidaten, weil Shopware im Event nur die `templateId` mitgibt:
-        //   1. aufgelöster Mail-Template-Type (`order_confirmation_mail`) — der Default
-        //   2. Flow-Event-Name (`checkout.order.placed`) — falls ein Admin ihn einträgt
+        // Zwei Kandidaten, weil Shopware im Ereignis nur die `templateId` mitgibt: der daraus
+        // ermittelte Vorlagentyp (`order_confirmation_mail`, die Vorgabe) und der Name des
+        // Flow-Ereignisses (`checkout.order.placed`), falls jemand ihn in der Verwaltung einträgt.
         $technicalName = $this->templateTypeResolver->resolveTechnicalName(
             $this->extractTemplateId($event->getData()),
             $event->getContext(),
@@ -115,10 +106,11 @@ final class MailBeforeValidateSubscriber implements EventSubscriberInterface
 
         if ($bin !== []) {
             $data = $event->getData();
-            $existing = $data[self::DATA_KEY_BIN_ATTACHMENTS] ?? [];
-            if (!\is_array($existing)) {
-                $existing = [];
-            }
+            // Ab 6.7.15 beschreibt der Kern das Feld als Liste; ältere 6.7-Fassungen nur als `mixed`.
+            $existing = $data[self::DATA_KEY_BIN_ATTACHMENTS] ?? null;
+            $existing = \is_array($existing) ? $existing : [];
+
+            // Anhänge anderer Plugins oder des Kerns bleiben erhalten; die eigenen kommen dazu.
 
             $data[self::DATA_KEY_BIN_ATTACHMENTS] = array_merge($existing, $bin);
             $event->setData($data);
@@ -163,8 +155,8 @@ final class MailBeforeValidateSubscriber implements EventSubscriberInterface
     }
 
     /**
-     * Die ID des verwendeten Mail-Templates liegt in den Mail-Daten (`SendMailAction`
-     * setzt sie über `$data->set('templateId', ...)`), nicht in den Template-Daten.
+     * Die ID der verwendeten Mailvorlage liegt in den Maildaten (`SendMailAction` setzt sie über
+     * `$data->set('templateId', ...)`), nicht in den Vorlagendaten.
      *
      * @param array<string, mixed> $data
      */
@@ -176,8 +168,8 @@ final class MailBeforeValidateSubscriber implements EventSubscriberInterface
     }
 
     /**
-     * Flow-Event-Name, z. B. `checkout.order.placed`. `SendMailAction` legt ihn
-     * als `eventName` in die Template-Daten.
+     * Name des Flow-Ereignisses, etwa `checkout.order.placed`, den `SendMailAction` als
+     * `eventName` in die Vorlagendaten legt.
      *
      * @param array<string, mixed> $templateData
      */
@@ -226,6 +218,8 @@ final class MailBeforeValidateSubscriber implements EventSubscriberInterface
             throw new MediaNotLoadedException($attachment->getMediaId());
         }
 
+        // Das Medium ist privat; lesen darf es nur der Systemkontext. Die Datei wandert ganz in den
+        // Speicher, weil der Mailer den Inhalt als Zeichenkette erwartet.
         $content = $context->scope(Context::SYSTEM_SCOPE, fn (Context $ctx): string => $this->mediaService->loadFile($media->getId(), $ctx));
 
         return [

@@ -21,10 +21,12 @@ use Shopware\Core\Framework\DataAbstractionLayer\Field\UpdatedAtField;
 use Shopware\Core\Framework\DataAbstractionLayer\FieldCollection;
 
 /**
- * DAL-Definition für `rc_order_attachment`. Verheiratet einen Customer-Upload
- * (Media-Eintrag) mit einer Bestellung. Pflichtfelder werden in der Migration
- * abgedeckt; die `ReferenceVersionField` auf `OrderDefinition` ist Senior-Pflicht,
- * damit Live- und Draft-Versionen der Order nicht vermischt werden.
+ * DAL-Definition für `rc_order_attachment`, die einen Upload des Kunden (einen Medieneintrag)
+ * an eine Bestellung bindet. Die Pflichtfelder stehen in der Migration ebenfalls als `NOT NULL`.
+ *
+ * Das `ReferenceVersionField` auf `OrderDefinition` ist nötig, weil Shopware Bestellungen
+ * versioniert. Ohne die Versionsspalte ließe sich ein Anhang nicht eindeutig der Live-Fassung
+ * zuordnen, und der Fremdschlüssel auf `order (id, version_id)` hätte keine zweite Spalte.
  */
 final class OrderAttachmentDefinition extends EntityDefinition
 {
@@ -62,6 +64,7 @@ final class OrderAttachmentDefinition extends EntityDefinition
                 ->addFlags(new ApiAware(), new Required()),
             (new IntField('file_size', 'fileSize'))
                 ->addFlags(new ApiAware(), new Required()),
+            // Ohne ApiAware lässt sich die Bestellung über den Anhang nicht per API nachladen.
             new ManyToOneAssociationField('order', 'order_id', OrderDefinition::class, 'id', false),
             (new ManyToOneAssociationField('media', 'media_id', MediaDefinition::class, 'id', false))
                 ->addFlags(new ApiAware()),

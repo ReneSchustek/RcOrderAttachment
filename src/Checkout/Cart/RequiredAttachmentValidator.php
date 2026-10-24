@@ -10,18 +10,21 @@ use Shopware\Core\Checkout\Cart\Cart;
 use Shopware\Core\Checkout\Cart\CartValidatorInterface;
 use Shopware\Core\Checkout\Cart\Error\ErrorCollection;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
+use Symfony\Component\HttpFoundation\RequestStack;
 
 /**
- * Serverseitige Erzwingung der „Upload Pflicht"-Konfiguration.
+ * Setzt die Einstellung „Anhang ist Pflicht" auf dem Server durch.
  *
- * Läuft auf jeder Cart-Berechnung und beim Order-Placement. Liefert einen
- * `AttachmentRequiredError`, sobald die Pflicht aktiv und die Session leer ist.
+ * Shopware ruft den Prüfer bei jeder Warenkorbberechnung und vor dem Anlegen der Bestellung auf.
+ * Er meldet `AttachmentRequiredError`, sobald die Pflicht gilt, die Anfrage aus der Storefront
+ * kommt und in der Sitzung noch kein Upload vorgemerkt ist.
  */
 final class RequiredAttachmentValidator implements CartValidatorInterface
 {
     public function __construct(
         private readonly PluginConfigProvider $configProvider,
         private readonly PendingUploadStore $pendingUploadStore,
+        private readonly RequestStack $requestStack,
     ) {
     }
 
@@ -32,11 +35,8 @@ final class RequiredAttachmentValidator implements CartValidatorInterface
             return;
         }
 
-        // Ohne Storefront-Session (Store-API/Headless/manuelle Admin-Bestellung)
-        // gibt es keine Confirm-Page und damit keine Upload-Möglichkeit. Die
-        // Pflicht dort zu erzwingen würde solche Bestellungen dauerhaft blocken —
-        // die Erzwingung greift nur im Session-Kontext (Storefront-Checkout).
-        if (!$this->pendingUploadStore->sessionAvailable()) {
+        // Außerhalb der Storefront fehlt die Seite, auf der sich ein Anhang hochladen ließe.
+        if (!StorefrontRequestScope::isStorefront($this->requestStack)) {
             return;
         }
 

@@ -24,26 +24,21 @@ use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Stamp\DelayStamp;
 
 /**
- * Unit-Tests für den Opt-in-Retry-Handler.
+ * Prüft den zuschaltbaren Handler, der Mailanhänge nach einem Lesefehler erneut versucht und
+ * am Ende den Status für den Betrieb festhält.
  *
- * Der Handler zählt die Versuche selbst und dispatcht bei Misserfolg eine neue
- * Nachricht mit `attempt + 1` und {@see DelayStamp}. Eine
- * `RecoverableMessageHandlingException` würde dieselbe Nachricht unverändert
- * erneut zustellen — `attempt` bliebe für immer 1 und die Abbruchbedingung
- * wäre unerreichbar.
- *
- * Pattern: echte Instanzen mit gemockten Shopware-Boundaries.
+ * Der Handler zählt die Versuche selbst und schickt bei Misserfolg eine neue Nachricht mit
+ * `attempt + 1` und {@see DelayStamp}. Eine `RecoverableMessageHandlingException` stellte
+ * dieselbe Nachricht unverändert erneut zu, `attempt` bliebe für immer 1, und die
+ * Abbruchbedingung wäre unerreichbar. Gemockt sind nur die Grenzen zu Shopware.
  */
 final class RetryFailedMailAttachmentsHandlerTest extends TestCase
 {
     private const ORDER_ID = '99999999999999999999999999999999';
 
     /**
-     * Was: Retry-Lauf für eine Order, deren Anhänge inzwischen alle gelöscht
-     *      sind (z. B. durch Retention-Cleanup).
-     * Warum: Endlos-Retry-Schleife muss vermieden werden — fehlende Anhänge
-     *        können nicht „heilen", der Status muss final auf `failed`.
-     * Erwartet: Genau ein `markFailed`-Aufruf, kein Re-Dispatch.
+     * Hat die Aufbewahrungsbereinigung alle Anhänge schon gelöscht, kann kein weiterer Versuch
+     * gelingen. Der Status geht sofort auf `failed`, statt die Versuche abzuarbeiten.
      */
     public function testNoAttachmentsMarksFailed(): void
     {
@@ -59,12 +54,8 @@ final class RetryFailedMailAttachmentsHandlerTest extends TestCase
     }
 
     /**
-     * Was: Retry-Lauf, bei dem das Storage-Backend wieder antwortet und alle
-     *      Anhänge gelesen werden können.
-     * Warum: Genau der Happy-Path, für den der Retry existiert — ein
-     *        temporärer Storage-Hiccup heilt sich und der Status soll auf
-     *        `attached` aktualisiert werden.
-     * Erwartet: `markAttached`-Aufruf, kein Re-Dispatch.
+     * Der Fall, für den es die Wiederholung gibt: Der Speicher antwortet wieder, und der Status
+     * wechselt auf `attached`.
      */
     public function testReadableAttachmentsMarkAttached(): void
     {
@@ -85,13 +76,10 @@ final class RetryFailedMailAttachmentsHandlerTest extends TestCase
     }
 
     /**
-     * Was: Storage weiterhin defekt bei `attempt = 1`.
-     * Warum: Würfe der Handler eine `RecoverableMessageHandlingException`,
-     *        stellte Messenger dieselbe Nachricht mit `attempt = 1` erneut zu. Die
-     *        Zählung stünde still, `MAX_ATTEMPTS` würde nie erreicht und `failed`
-     *        nie geschrieben.
-     * Erwartet: Kein Throw, kein Status-Schreiben, stattdessen eine neue
-     *           Nachricht mit `attempt = 2` und 60 s Verzögerung.
+     * Würfe der Handler hier eine `RecoverableMessageHandlingException`, stellte Messenger
+     * dieselbe Nachricht mit `attempt = 1` erneut zu. Die Zählung stünde still, und `failed`
+     * würde nie geschrieben. Erwartet wird deshalb eine neue Nachricht mit `attempt = 2` und
+     * einer Minute Wartezeit, der Grundwert des Handlers.
      */
     public function testUnreadableAttachmentReschedulesWithIncrementedAttempt(): void
     {
@@ -130,10 +118,8 @@ final class RetryFailedMailAttachmentsHandlerTest extends TestCase
     }
 
     /**
-     * Was: Storage defekt bei `attempt = 2`.
-     * Warum: Der Backoff muss exponentiell wachsen, sonst hämmert der Worker
-     *        im Minutentakt gegen ein totes Storage-Backend.
-     * Erwartet: Nachricht mit `attempt = 3` und 120 s Verzögerung.
+     * Die Wartezeit verdoppelt sich je Versuch, hier auf zwei Minuten. Sonst fragte der Worker
+     * im Minutentakt einen ausgefallenen Speicher ab.
      */
     public function testBackoffGrowsExponentially(): void
     {
@@ -161,12 +147,8 @@ final class RetryFailedMailAttachmentsHandlerTest extends TestCase
     }
 
     /**
-     * Was: Retry-Lauf bei `attempt = MAX_ATTEMPTS` (5) und weiterhin defektem
-     *      Storage.
-     * Warum: Endlos-Schleife verhindern — der Operator muss erkennen, dass die
-     *        Anhänge nicht mehr zugestellt werden können und manuell eingreifen
-     *        sollte.
-     * Erwartet: `markFailed` als finale Markierung, kein weiterer Dispatch.
+     * Nach dem letzten Versuch endet die Kette mit `failed`, damit der Betrieb sieht, dass er
+     * die Anhänge selbst zustellen muss.
      */
     public function testExhaustedAttemptsMarkFailedAndStopRescheduling(): void
     {
@@ -187,18 +169,15 @@ final class RetryFailedMailAttachmentsHandlerTest extends TestCase
     }
 
     /**
-     * Was: Erschöpfte Versuche (attempt = MAX), aber nur EIN von zwei Anhängen
-     *      bleibt dauerhaft unlesbar.
-     * Warum: Pauschales `failed` würde suggerieren, dass gar kein Anhang ankam —
-     *        tatsächlich wurde ein Teil zugestellt. Die Telemetrie muss den
-     *        Teilfehler als `partial_failure` festhalten.
-     * Erwartet: `markPartialFailure`, kein `markFailed`, kein Re-Dispatch.
+     * Bleibt nach dem letzten Versuch nur einer von zwei Anhängen unlesbar, ist `failed` falsch,
+     * denn ein Teil kam an. Der Status lautet dann `partial_failure`.
      */
     public function testExhaustedPartialFailureMarksPartial(): void
     {
         $readable = $this->attachment('11111111111111111111111111111111');
         $broken = $this->attachment('22222222222222222222222222222222');
-        $broken->setMedia(null); // media == null zählt in countUnreadable als Fehler
+        // Ein fehlendes Medium zählt in `countUnreadable()` als Fehler.
+        $broken->setMedia(null);
 
         $tracker = $this->createMock(MailAttachmentStatusTrackerInterface::class);
         $tracker->expects(self::once())->method('markPartialFailure')->with(self::ORDER_ID);
@@ -207,7 +186,7 @@ final class RetryFailedMailAttachmentsHandlerTest extends TestCase
         $bus = $this->createMock(MessageBusInterface::class);
         $bus->expects(self::never())->method('dispatch');
 
-        // storageBroken=false → das lesbare Media wird gelesen; nur $broken (media=null) fällt durch.
+        // Der Speicher funktioniert, nur `$broken` ohne Medium fällt durch.
         $handler = $this->handler([$readable, $broken], $tracker, $bus, mediaContent: 'ok');
 
         $handler(new RetryFailedMailAttachmentsMessage(self::ORDER_ID, attempt: RetryFailedMailAttachmentsHandler::MAX_ATTEMPTS));

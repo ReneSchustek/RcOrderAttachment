@@ -10,18 +10,15 @@ use Ruhrcoder\RcOrderAttachment\Service\Config\PluginConfigProvider;
 use Shopware\Core\System\SystemConfig\SystemConfigService;
 
 /**
- * Unit-Tests des Konfig-Providers: Default-Fallbacks, Wertebereich-Clamping,
- * Whitelist-Normalisierung, Mail-Template-Parsing. Sichert die zentrale
- * Bereinigungs-Stelle gegen Regressionen.
+ * Prüft den Konfigurationsleser, die einzige Stelle, an der Eingaben aus der Verwaltung
+ * bereinigt werden: Vorgabewerte, Grenzen der Wertebereiche, Normalisierung der Endungen und
+ * die Freigabeliste der Mailvorlagen. Was hier durchrutscht, erreicht jeden Validator ungefiltert.
  */
 final class PluginConfigProviderTest extends TestCase
 {
     /**
-     * Was: SystemConfigService liefert für alle Keys `null`.
-     * Warum: Beim Erst-Install hat der Operator noch nichts konfiguriert — die
-     *        Plugin-Defaults müssen Production-tauglich sein, sonst läuft das
-     *        Plugin out-of-the-box gar nicht oder mit unsicheren Werten.
-     * Erwartet: Alle Config-Felder fallen auf ihre Defaults aus `PluginConfigProvider`.
+     * Nach der Installation ist noch nichts eingestellt. Die Vorgabewerte müssen dann für den
+     * Betrieb taugen, sonst läuft das Plugin gar nicht oder mit unsicheren Werten.
      */
     public function testDefaultsWhenEverythingMissing(): void
     {
@@ -31,7 +28,7 @@ final class PluginConfigProviderTest extends TestCase
         self::assertTrue($config->enabled);
         self::assertFalse($config->required);
         self::assertSame(5, $config->maxFiles);
-        // B2C-Defaults: Smartphone-tauglich (iPhone-Fotos um 3–8 MB).
+        // 10 MB je Datei und 40 MB gesamt reichen für Handyfotos, die meist 3 bis 8 MB groß sind.
         self::assertSame(10240, $config->maxFileSizeKb);
         self::assertSame(40960, $config->maxTotalSizeKb);
         self::assertSame(['pdf', 'jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'], $config->allowedExtensions);
@@ -44,11 +41,8 @@ final class PluginConfigProviderTest extends TestCase
     }
 
     /**
-     * Was: Admin trägt absurd hohe Werte in die Admin-UI ein.
-     * Warum: Schutz vor versehentlich oder böswillig zu großen Limits, die
-     *        eine Disk-Voll-Situation oder Memory-Explosion auslösen würden.
-     *        `ABSOLUTE_MAX_*`-Konstanten sind die harte Obergrenze.
-     * Erwartet: Werte werden auf die `PluginConfig::ABSOLUTE_MAX_*` geclampt.
+     * Zu große Grenzen, versehentlich oder böswillig eingetragen, könnten Platte oder Speicher
+     * füllen. Die Konstanten `PluginConfig::ABSOLUTE_MAX_*` deckeln sie hart.
      */
     public function testClampingUpperBound(): void
     {
@@ -65,11 +59,8 @@ final class PluginConfigProviderTest extends TestCase
     }
 
     /**
-     * Was: Admin trägt 0 oder negative Werte ein.
-     * Warum: 0/negativ bedeutet faktisch „Plugin deaktiviert" für Datei-Limits.
-     *        Statt das im Plugin abzufangen, clampen wir auf 1 als Minimum —
-     *        kostet keine Komplexität und vermeidet Division-by-Zero im Code.
-     * Erwartet: Werte werden auf 1 angehoben.
+     * Null oder ein negativer Wert wiese jede Datei ab, als wäre das Plugin abgeschaltet. Der
+     * Leser hebt solche Werte auf 1 an, statt den Fall an jeder Verwendungsstelle abzufangen.
      */
     public function testClampingLowerBound(): void
     {
@@ -84,11 +75,8 @@ final class PluginConfigProviderTest extends TestCase
     }
 
     /**
-     * Was: Roh-Whitelist mit Whitespace, Großbuchstaben, Punkten, Duplikaten.
-     * Warum: Admin tippt Werte unterschiedlich ein — `.PDF`, `PDF`, `pdf` sollen
-     *        äquivalent sein. Doppelte Einträge dürfen nicht zwei DAL-Filter-
-     *        Pässe erzeugen.
-     * Erwartet: Lowercase, ohne Punkt, dedupliziert: `['pdf', 'jpg', 'png']`.
+     * In der Verwaltung tippt jeder anders: `.PDF`, `PDF` und `pdf` meinen dasselbe, und
+     * Komma, Semikolon und Leerzeichen trennen gleichermaßen. Doppelte fallen weg.
      */
     public function testExtensionParsingNormalizesAndDeduplicates(): void
     {
@@ -101,16 +89,10 @@ final class PluginConfigProviderTest extends TestCase
     }
 
     /**
-     * Was: Roh-Whitelist mit Bindestrich-Zeichen, Whitespace im Token,
-     *      Sonderzeichen (`<`), zu kurzen Tokens, plus die gefährliche Endung
-     *      `php`.
-     * Warum: Defense-in-Depth — bei manipulierter SystemConfig (z. B. SQL-
-     *        Injection in der Admin-UI) muss der Parser strenge Regex-Filterung
-     *        anwenden. Zusätzlich greift die Blacklist an der Quelle: `php`
-     *        besteht zwar die Regex, wird aber verworfen, damit es nicht über
-     *        den MediaWhitelistSubscriber in die Core-Media-Whitelist gelangt.
-     * Erwartet: Nur `['pdf']` überlebt (`php` von der Blacklist verworfen,
-     *           `j s`/`p df`/`html<` von der Regex).
+     * Auch eine manipulierte Systemkonfiguration darf nur saubere Endungen liefern. `j s` und
+     * `p df` zerfallen am Leerzeichen in Teile unter drei Zeichen, `html<` scheitert am Muster.
+     * `php` besteht das Muster, fällt aber an der Sperrliste, damit es nicht über den
+     * `MediaWhitelistSubscriber` in die Freigabeliste des Kerns gelangt.
      */
     public function testExtensionParsingRejectsDangerousChars(): void
     {
@@ -123,15 +105,10 @@ final class PluginConfigProviderTest extends TestCase
     }
 
     /**
-     * Was: Admin trägt gefährliche, aber formal gültige Endungen (`svg`, `exe`,
-     *      `phtml`) neben harmlosen in die Whitelist.
-     * Warum: Der MediaWhitelistSubscriber merged `allowedExtensions` in die
-     *        Core-Media-Whitelist. Ohne Blacklist-Filter an der Quelle würde
-     *        eine admin-konfigurierte gefährliche Endung global für private
-     *        Media freigegeben, ohne je den DangerousContentValidator zu
-     *        durchlaufen (Fail-open).
-     * Erwartet: gefährliche Endungen werden verworfen, nur `['pdf', 'png']`
-     *           bleiben.
+     * Der `MediaWhitelistSubscriber` übernimmt `allowedExtensions` in die Freigabeliste des
+     * Kerns. Ohne Sperrliste an der Quelle gäbe eine eingetragene gefährliche Endung wie `svg`
+     * diese Dateien shopweit für private Medien frei, ohne dass der `DangerousContentValidator`
+     * sie je sähe.
      */
     public function testExtensionParsingDropsBlacklistedExtensions(): void
     {
@@ -144,12 +121,8 @@ final class PluginConfigProviderTest extends TestCase
     }
 
     /**
-     * Was: `mailTemplateWhitelist` enthält ausschließlich ungültige Tokens.
-     * Warum: Eine leere Whitelist würde „an ALLE Order-Mails anhängen"
-     *        bedeuten (Mail-Inflation). Bei nur-ungültiger Eingabe
-     *        muss fail-closed auf den sicheren Default zurückgefallen werden,
-     *        nicht fail-open auf „alle".
-     * Erwartet: `['order_confirmation_mail']`.
+     * Eine leere Freigabeliste hieße „an alle Bestellmails anhängen". Besteht die Eingabe nur
+     * aus ungültigen Einträgen, gilt deshalb die sichere Vorgabe und nicht „alle".
      */
     public function testMailWhitelistFailsClosedOnAllInvalidTokens(): void
     {
@@ -162,13 +135,9 @@ final class PluginConfigProviderTest extends TestCase
     }
 
     /**
-     * Was: `attachmentRetentionDays = 0` und `orphanRetentionHours = 0`.
-     * Warum: `0` bei `attachmentRetentionDays` ist die explizite Konfiguration
-     *        „nie löschen" (legitime Anforderung, z. B. Audit-Pflicht).
-     *        `orphanRetentionHours = 0` ist dagegen unsinnig — sofortiges
-     *        Löschen würde laufende Uploads zerschießen, deshalb min 1.
-     * Erwartet: `attachmentRetentionDays = 0` (akzeptiert),
-     *           `orphanRetentionHours = 1` (clamped), `attachmentRetentionEnabled() = false`.
+     * Bei den Anhängen ist 0 Tage eine gewollte Einstellung („nie löschen", etwa wegen einer
+     * Aufbewahrungspflicht). Bei den Waisen löschte 0 Stunden laufende Uploads sofort, deshalb
+     * gilt dort mindestens eine Stunde.
      */
     public function testRetentionAllowsZero(): void
     {

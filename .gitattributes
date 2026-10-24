@@ -19,3 +19,7 @@
 *.otf binary
 *.pdf binary
 *.zip binary
+
+# Messprojekt: läuft gegen eine Testinstanz, gehört in kein Ausrollpaket.
+/benchmarks export-ignore
+/phpbench.json export-ignore

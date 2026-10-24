@@ -43,3 +43,6 @@ Thumbs.db
 .env.*.local
 !.env.example
 secrets.json
+
+# composer.lock — Library-Plugins liefern keinen Lock mit
+composer.lock

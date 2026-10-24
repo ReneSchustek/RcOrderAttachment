@@ -13,10 +13,11 @@ use Shopware\Core\System\CustomField\Aggregate\CustomFieldSet\CustomFieldSetColl
 use Shopware\Core\System\CustomField\CustomFieldTypes;
 
 /**
- * Legt das interne Custom-Field-Set für den Mail-Anhang-Status an
- * (`rc_order_attachment.mail_status` auf `order`).
+ * Legt das Zusatzfeld-Set für den Anhangstatus der Bestellbestätigung an, mit dem Feld
+ * `rc_order_attachment_mail_status` an der Entität `order`.
  *
- * Nicht customer-beschreibbar — interner Marker für Mail-Versand-Resilienz.
+ * Kunden dürfen das Feld nicht beschreiben (`allowCustomerWrite` ist `false`). Es dient nur dem
+ * Betrieb, um Bestellungen zu finden, deren Bestätigung ohne alle Anhänge hinausging.
  */
 final class CustomFieldInstaller
 {
@@ -28,21 +29,19 @@ final class CustomFieldInstaller
     public const STATUS_FAILED = 'failed';
 
     /**
-     * Deterministische UUIDs, damit `upsert` ohne Lookup idempotent läuft.
-     * BEIDE — Set UND Feld — brauchen eine feste ID: Ein genestetes Custom-Field
-     * ohne `id` bekäme bei jedem Aufruf eine neue Zufalls-UUID, und da `update()`
-     * bei jedem Plugin-Update `install()` aufruft, liefe der Writer beim zweiten
-     * Mal in die UNIQUE-Constraint `custom_field.name` (Duplicate-Key) → jedes
-     * `plugin:update` bräche ab.
+     * Feste IDs, damit `upsert` ohne vorherige Suche beliebig oft laufen kann. Set und Feld
+     * brauchen beide eine: Ein verschachteltes Feld ohne `id` bekäme bei jedem Aufruf eine neue
+     * Zufalls-ID. Weil `update()` bei jedem Plugin-Update `install()` aufruft, liefe der Writer
+     * beim zweiten Mal in den eindeutigen Index auf `custom_field.name`, und `plugin:update`
+     * bräche ab.
      */
     private const SET_ID = '0bc4f1a4b6e34ca7a2a9b4a4ad44cf01';
     private const FIELD_ID = '0bc4f1a4b6e34ca7a2a9b4a4ad44cf02';
 
     /**
-     * Auch die Zuordnung des Sets zur Entität braucht eine feste ID. Ohne sie vergibt der
-     * Upsert bei jedem Aufruf eine neue UUID und läuft gegen den eindeutigen Index
-     * `uniq.custom_field_set_relation.entity_name` — `plugin:update` bricht dann ab. Derselbe
-     * Fehler wie beim Feld, nur eine Ebene tiefer.
+     * Auch die Zuordnung des Sets zur Entität braucht eine feste ID. Ohne sie vergäbe der Upsert
+     * bei jedem Aufruf eine neue ID und liefe gegen den eindeutigen Index
+     * `uniq.custom_field_set_relation.entity_name`, sodass `plugin:update` abbräche.
      */
     private const RELATION_ID = '0bc4f1a4b6e34ca7a2a9b4a4ad44cf03';
 
@@ -60,11 +59,10 @@ final class CustomFieldInstaller
 
     public function install(Context $context): void
     {
-        // Reconcile: frühere Installs (vor Einführung der festen FIELD_ID) haben
-        // das Feld unter einer Zufalls-UUID angelegt. Ohne Aufräumen würde der
-        // folgende Upsert mit fester FIELD_ID gegen dieselbe UNIQUE-Constraint
-        // `custom_field.name` laufen. Order-Daten bleiben unberührt: die Werte
-        // liegen als JSON per Feld-NAME auf `order`, nicht per Feld-ID.
+        // Ältere Installationen tragen Feld und Zuordnung unter Zufalls-IDs. Ohne dieses Aufräumen
+        // liefe der Upsert mit festen IDs gegen die eindeutigen Indizes. Die Werte an den
+        // Bestellungen bleiben erhalten, weil sie im JSON unter dem Feldnamen liegen, nicht unter
+        // der Feld-ID.
         $this->removeLegacyField($context);
         $this->removeLegacyRelation($context);
 
@@ -116,9 +114,8 @@ final class CustomFieldInstaller
     }
 
     /**
-     * Entfernt Alt-Instanzen des Status-Felds, die im Bestand unter einer anderen,
-     * zufälligen ID als {@see FIELD_ID} liegen — Voraussetzung, damit der Upsert
-     * mit fester ID nicht gegen die UNIQUE-Constraint `custom_field.name` läuft.
+     * Löscht Statusfelder gleichen Namens, die unter einer anderen ID als {@see FIELD_ID} liegen.
+     * Erst danach kann der Upsert mit fester ID laufen, ohne an `custom_field.name` zu scheitern.
      */
     private function removeLegacyField(Context $context): void
     {
@@ -138,9 +135,8 @@ final class CustomFieldInstaller
     }
 
     /**
-     * Gegenstück zu {@see removeLegacyField()} für die Set-Relation. Bestandsinstallationen
-     * tragen sie unter einer Zufalls-UUID; ohne Aufräumen liefe der Upsert mit fester
-     * {@see RELATION_ID} erneut gegen den eindeutigen Index.
+     * Gegenstück zu {@see removeLegacyField()} für die Zuordnung des Sets zur Bestellung, die in
+     * älteren Installationen unter einer Zufalls-ID liegt.
      */
     private function removeLegacyRelation(Context $context): void
     {

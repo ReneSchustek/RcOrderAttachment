@@ -4,40 +4,35 @@ declare(strict_types=1);
 
 namespace Ruhrcoder\RcOrderAttachment\Service\Subscriber;
 
-use Ruhrcoder\RcOrderAttachment\Service\Config\PluginConfigProvider;
 use Ruhrcoder\RcOrderAttachment\Service\Media\OrderAttachmentUploadScope;
 use Shopware\Core\Content\Media\Event\MediaFileExtensionWhitelistEvent;
 use Shopware\Core\Content\Media\MediaException;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
 /**
- * Erweitert die Shopware-Whitelist der erlaubten Datei-Endungen um die in der
- * Plugin-Konfiguration freigegebenen — und zwar nur für Uploads dieses Plugins.
+ * Ergänzt die Liste erlaubter Endungen des Kerns um die in der Plugin-Konfiguration freigegebenen,
+ * und zwar nur für Uploads dieses Plugins.
  *
- * Beispiel: Admin trägt `dwg` in die Plugin-Whitelist ein. Ohne diesen
- * Subscriber würde `FileSaver::validateFileExtension` mit
- * `MEDIA_FILE_EXTENSION_NOT_SUPPORTED` aussteigen — weil `dwg` nicht in
+ * Trägt jemand `dwg` in die Plugin-Konfiguration ein, stiege `FileSaver::validateFileExtension`
+ * ohne diesen Subscriber mit `MEDIA_FILE_EXTENSION_NOT_SUPPORTED` aus, weil `dwg` nicht in
  * Shopwares `private_allowed_extensions` steht.
  *
- * Der Core dispatcht das Event für **jeden** Media-Upload und unterscheidet dabei
- * nur zwischen öffentlicher und privater Whitelist
- * ({@see \Shopware\Core\Content\Media\Upload\MediaFileExtensionValidator}) — ein
- * Merkmal „stammt aus diesem Plugin" trägt es nicht. Deshalb markiert der
- * Upload-Service seinen Context mit {@see OrderAttachmentUploadScope} und dieser
- * Subscriber erweitert nur bei gesetztem Marker. Ohne die Prüfung würde die
- * Plugin-Konfiguration zur Shop-Konfiguration.
+ * Der Kern löst das Ereignis bei jedem Medien-Upload aus und unterscheidet dabei nur zwischen
+ * öffentlicher und privater Liste
+ * ({@see \Shopware\Core\Content\Media\Upload\MediaFileExtensionValidator}); woher der Upload
+ * stammt, verrät es nicht. Der Upload-Dienst kennzeichnet seinen Context deshalb mit
+ * {@see OrderAttachmentUploadScope}, und nur dann greift die Erweiterung. Sonst würde die
+ * Plugin-Konfiguration zur Konfiguration des ganzen Shops.
  *
- * Die hart kodierte Blacklist im {@see \Ruhrcoder\RcOrderAttachment\Service\Validation\DangerousContentValidator}
- * läuft VORHER und sortiert gefährliche Endungen vor der Whitelist-Erweiterung
- * raus — wir erweitern hier also nur das, was schon validiert wurde.
+ * Die Endungen trägt das Kennzeichen selbst, aus der Konfiguration des Kanals, in dem hochgeladen
+ * wird; das Ereignis kennt keinen Kanal.
+ *
+ * Gefährliche Endungen kommen hier nicht an: Der PluginConfigProvider entfernt die Einträge der
+ * Sperrliste aus {@see \Ruhrcoder\RcOrderAttachment\Service\Validation\DangerousContentValidator}
+ * schon beim Lesen, und der Upload-Dienst hat jede Datei vor dem Speichern geprüft.
  */
 final class MediaWhitelistSubscriber implements EventSubscriberInterface
 {
-    public function __construct(
-        private readonly PluginConfigProvider $configProvider,
-    ) {
-    }
-
     public static function getSubscribedEvents(): array
     {
         return [
@@ -47,36 +42,33 @@ final class MediaWhitelistSubscriber implements EventSubscriberInterface
 
     public function onWhitelist(MediaFileExtensionWhitelistEvent $event): void
     {
-        if (!$this->isPluginUpload($event)) {
-            return;
-        }
-
-        $config = $this->configProvider->getForSalesChannel();
-        if (!$config->enabled || $config->allowedExtensions === []) {
+        $scope = $this->pluginUploadScope($event);
+        if ($scope === null || $scope->allowedExtensions === []) {
             return;
         }
 
         $existing = array_map('strtolower', $event->getWhitelist());
-        $merged = array_values(array_unique(array_merge($existing, $config->allowedExtensions)));
+        $merged = array_values(array_unique(array_merge($existing, $scope->allowedExtensions)));
 
         $event->setWhitelist($merged);
     }
 
     /**
-     * Belegt der Context, dass der Upload aus diesem Plugin stammt?
+     * Das Kennzeichen eines Uploads aus diesem Plugin, oder `null`.
      *
-     * Fail-closed: Lässt sich die Herkunft nicht belegen, bleibt die Core-Whitelist
-     * unangetastet. Der Context ist im Event bis Shopware 6.8 optional; fehlt er,
-     * wirft {@see MediaFileExtensionWhitelistEvent::getContext()}. Dieser Fall
-     * kommt auf keinem Core-Pfad vor — die Absicherung verhindert nur, dass ein
-     * fremder Dispatcher ohne Context jeden Media-Upload im Shop scheitern lässt.
+     * Lässt sich die Herkunft nicht belegen, bleibt die Liste des Kerns unverändert. Bis Shopware
+     * 6.8 ist der Context im Ereignis optional, und {@see MediaFileExtensionWhitelistEvent::getContext()}
+     * wirft, wenn er fehlt. Auf den Pfaden des Kerns kommt das nicht vor; das `catch` verhindert
+     * nur, dass ein fremder Auslöser ohne Context jeden Medien-Upload im Shop scheitern lässt.
      */
-    private function isPluginUpload(MediaFileExtensionWhitelistEvent $event): bool
+    private function pluginUploadScope(MediaFileExtensionWhitelistEvent $event): ?OrderAttachmentUploadScope
     {
         try {
-            return $event->getContext()->hasExtension(OrderAttachmentUploadScope::NAME);
+            $scope = $event->getContext()->getExtension(OrderAttachmentUploadScope::NAME);
         } catch (MediaException) {
-            return false;
+            return null;
         }
+
+        return $scope instanceof OrderAttachmentUploadScope ? $scope : null;
     }
 }

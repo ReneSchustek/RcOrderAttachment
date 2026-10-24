@@ -9,10 +9,12 @@ use Shopware\Storefront\Page\Account\Order\AccountOrderPageLoadedEvent;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
 /**
- * Event-Adapter: delegiert das Batch-Loading der Anhänge an den
- * {@see OrderAttachmentPageletLoaderInterface} und hängt pro Order eine
- * {@see \Ruhrcoder\RcOrderAttachment\Storefront\Struct\AccountAttachmentsStruct}
- * an. Pflicht nach DSGVO Art. 15 (Auskunft).
+ * Hängt an jede Bestellung der Bestellübersicht im Kundenkonto ihre Anhänge als
+ * {@see \Ruhrcoder\RcOrderAttachment\Storefront\Struct\AccountAttachmentsStruct}, damit der
+ * Kunde sieht, welche Dateien gespeichert sind (Auskunft nach Art. 15 DSGVO).
+ *
+ * Das Laden übernimmt der {@see OrderAttachmentPageletLoaderInterface} mit einer Abfrage für alle
+ * Bestellungen der Seite.
  */
 final class AccountOrderPageSubscriber implements EventSubscriberInterface
 {

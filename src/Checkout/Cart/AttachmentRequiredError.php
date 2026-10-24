@@ -7,14 +7,15 @@ namespace Ruhrcoder\RcOrderAttachment\Checkout\Cart;
 use Shopware\Core\Checkout\Cart\Error\Error;
 
 /**
- * Cart-Level-Fehler, der ausgelöst wird, wenn das Plugin auf „Upload Pflicht"
- * konfiguriert ist, der Customer aber noch keine Datei hochgeladen hat.
+ * Warenkorbfehler für den Fall, dass ein Anhang Pflicht ist und der Kunde noch keine Datei
+ * hochgeladen hat.
  *
- * `blockOrder() = true` verhindert auf Server-Seite das Order-Placement —
- * selbst wenn das JS-Plugin im Browser deaktiviert oder umgangen wurde.
+ * `blockOrder()` liefert immer `true`, damit der Server die Bestellung auch dann ablehnt, wenn
+ * das Skript im Browser abgeschaltet oder umgangen wurde.
  */
 final class AttachmentRequiredError extends Error
 {
+    // Dient zugleich als Fehler-ID und als Snippet-Schlüssel, unter dem die Storefront den Text sucht.
     private const KEY = 'rc-order-attachment-required';
 
     public function __construct()

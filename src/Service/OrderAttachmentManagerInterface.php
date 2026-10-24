@@ -8,9 +8,9 @@ use Ruhrcoder\RcOrderAttachment\Core\Content\OrderAttachment\OrderAttachmentEnti
 use Shopware\Core\Framework\Context;
 
 /**
- * Persistiert die Bindung zwischen Bestellung und Customer-Upload. Eigene
- * Schnittstelle, damit Subscriber (OrderPlaced) und künftige Audit-Decorationen
- * entkoppelt testbar sind.
+ * Speichert die Bindung zwischen Bestellung und Upload des Kunden. Die Schnittstelle lässt den
+ * Bestell-Subscriber und den Wiederhol-Handler ohne Datenbank testen und erlaubt einen Dekorator,
+ * ohne die Aufrufer anzufassen.
  */
 interface OrderAttachmentManagerInterface
 {

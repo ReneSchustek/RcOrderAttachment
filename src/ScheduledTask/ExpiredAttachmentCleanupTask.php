@@ -7,8 +7,9 @@ namespace Ruhrcoder\RcOrderAttachment\ScheduledTask;
 use Shopware\Core\Framework\MessageQueue\ScheduledTask\ScheduledTask;
 
 /**
- * Löscht Customer-Uploads abgeschlossener Bestellungen nach Ablauf der
- * konfigurierten DSGVO-Retention (Default 180 Tage, 0 deaktiviert).
+ * Löscht die Anhänge von Bestellungen, sobald die eingestellte Aufbewahrungsfrist abgelaufen ist.
+ * Maßgeblich ist das Alter des Anhangs, nicht der Status der Bestellung; die Frist 0 schaltet das
+ * Löschen ab.
  */
 final class ExpiredAttachmentCleanupTask extends ScheduledTask
 {
@@ -19,6 +20,7 @@ final class ExpiredAttachmentCleanupTask extends ScheduledTask
 
     public static function getDefaultInterval(): int
     {
-        return 86400; // täglich
+        // Täglich, weil die Frist in Tagen zählt; ein häufigerer Lauf fände kaum Neues.
+        return 86400;
     }
 }

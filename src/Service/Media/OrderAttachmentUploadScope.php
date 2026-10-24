@@ -7,26 +7,36 @@ namespace Ruhrcoder\RcOrderAttachment\Service\Media;
 use Shopware\Core\Framework\Struct\Struct;
 
 /**
- * Marker am Context eines Media-Schreibvorgangs: belegt, dass er aus dem
- * Checkout-Upload dieses Plugins stammt.
+ * Kennzeichen am Context eines Medien-Schreibvorgangs, das ihn als Checkout-Upload dieses Plugins
+ * ausweist.
  *
  * Der {@see \Ruhrcoder\RcOrderAttachment\Service\Subscriber\MediaWhitelistSubscriber}
- * erweitert die Core-Whitelist ausschließlich, wenn dieser Marker am Context des
- * Events hängt. Ohne ihn würde die Plugin-Konfiguration die Endungen shopweit
- * freischalten — auch für öffentliche Uploads, die mit Bestell-Anhängen nichts zu
- * tun haben.
+ * erweitert die Endungsliste des Kerns nur, wenn das Kennzeichen am Context des Ereignisses
+ * hängt. Ohne diese Bindung schaltete die Plugin-Konfiguration die Endungen im ganzen Shop frei,
+ * auch für öffentliche Uploads, die mit Bestellanhängen nichts zu tun haben.
  *
- * Der Marker wird in
- * {@see \Ruhrcoder\RcOrderAttachment\Service\OrderAttachmentUploadService} nur um
- * den Speicheraufruf herum gesetzt und danach wieder entfernt — der Context lebt
- * über den ganzen Request, ein stehengelassener Marker würde die Ausweitung für
- * jeden weiteren Upload desselben Requests wieder öffnen.
+ * Es trägt die Endungen, die für den Kanal des Uploads freigegeben sind und mit denen die Datei
+ * geprüft wurde. Das Ereignis des Kerns kennt keinen Verkaufskanal; läse der Subscriber die
+ * Konfiguration selbst, bekäme er die kanalübergreifende, und eine nur im Kanal freigegebene Endung
+ * scheiterte danach im Kern.
+ *
+ * {@see \Ruhrcoder\RcOrderAttachment\Service\OrderAttachmentUploadService} setzt das
+ * Kennzeichen nur um den Speicheraufruf und entfernt es danach wieder. Der Context lebt über die
+ * ganze Anfrage, und ein stehengebliebenes Kennzeichen öffnete die Liste für jeden weiteren
+ * Upload derselben Anfrage.
  */
 final class OrderAttachmentUploadScope extends Struct
 {
     /**
-     * Name der Context-Extension. Plugin-Präfix, weil Extensions shopweit in
-     * einem Namensraum liegen.
+     * Name der Context-Erweiterung, mit Plugin-Präfix, weil alle Erweiterungen im ganzen Shop
+     * einen gemeinsamen Namensraum teilen.
      */
     public const NAME = 'rcOrderAttachmentUpload';
+
+    /**
+     * @param list<string> $allowedExtensions klein geschrieben, ohne die Einträge der Sperrliste
+     */
+    public function __construct(public readonly array $allowedExtensions = [])
+    {
+    }
 }

@@ -8,9 +8,8 @@ use Shopware\Core\Framework\HttpException;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Wird geworfen, wenn ein erwartetes Media-Objekt nicht (mehr) in der DAL
- * vorhanden oder nicht geladen ist. Tritt typischerweise auf, wenn ein
- * Anhang-Datensatz auf eine inzwischen gelöschte Media-Datei verweist.
+ * Ein Anhang verweist auf ein Medium, das nicht geladen werden konnte, meist weil eine der
+ * Aufräumaufgaben es schon gelöscht hat.
  */
 final class MediaNotLoadedException extends HttpException
 {

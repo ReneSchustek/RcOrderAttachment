@@ -5,36 +5,30 @@ declare(strict_types=1);
 namespace Ruhrcoder\RcOrderAttachment\Tests\Unit\Service\Subscriber;
 
 use PHPUnit\Framework\TestCase;
-use Ruhrcoder\RcOrderAttachment\Service\Config\PluginConfigProvider;
 use Ruhrcoder\RcOrderAttachment\Service\Media\OrderAttachmentUploadScope;
 use Ruhrcoder\RcOrderAttachment\Service\Subscriber\MediaWhitelistSubscriber;
 use Shopware\Core\Content\Media\Event\MediaFileExtensionWhitelistEvent;
+use Shopware\Core\Framework\Api\Context\SystemSource;
 use Shopware\Core\Framework\Context;
-use Shopware\Core\System\SystemConfig\SystemConfigService;
 
 /**
- * Sichert den sicherheitsrelevanten Whitelist-Subscriber in zwei Richtungen:
- *
- * 1. Er erweitert die Core-Media-Whitelist um die admin-konfigurierten Endungen —
- *    darf dabei aber NIEMALS geblacklistete (gefährliche) Endungen durchreichen.
- * 2. Er tut das ausschließlich für Uploads dieses Plugins. Der Core dispatcht das
- *    Event für jeden Media-Upload im Shop; ohne die Herkunftsprüfung würde die
- *    Plugin-Konfiguration zur Shop-Konfiguration.
- *
- * Echte {@see PluginConfigProvider}-Instanz mit gemocktem SystemConfigService.
+ * Prüft den Subscriber, der die Freigabeliste des Kerns für Medien um die freigegebenen Endungen
+ * erweitert. Er wirkt nur für Uploads dieses Plugins, und die Endungen kommen aus dem Kennzeichen,
+ * also aus der Konfiguration des Kanals, in dem hochgeladen wird. Der Kern löst das Ereignis bei
+ * jedem Medienupload im Shop aus; ohne die Herkunftsprüfung würde die Plugin-Einstellung zur
+ * Shop-Einstellung. Gefährliche Endungen entfernt schon der Konfigurationsleser
+ * (`PluginConfigProviderTest`).
  */
 final class MediaWhitelistSubscriberTest extends TestCase
 {
     /**
-     * Was: Konfigurierte Endungen (`dwg`) werden in die Core-Whitelist gemerged.
-     * Warum: Ohne den Merge lehnt Shopwares FileSaver zulässige, aber nicht in
-     *        `private_allowed_extensions` stehende Endungen ab.
-     * Erwartet: Bestehende + konfigurierte Endungen, dedupliziert.
+     * Ohne Erweiterung lehnt Shopwares `FileSaver` eingestellte Endungen wie `dwg` ab, die nicht
+     * in `private_allowed_extensions` stehen. Doppelte wie `pdf` erscheinen nur einmal.
      */
-    public function testMergesConfiguredExtensionsIntoWhitelist(): void
+    public function testMergesTheScopesExtensionsIntoTheWhitelist(): void
     {
-        $event = $this->pluginUploadEvent(['pdf', 'jpg']);
-        $this->subscriber(['allowedExtensions' => 'dwg,pdf'])->onWhitelist($event);
+        $event = $this->pluginUploadEvent(['pdf', 'jpg'], ['dwg', 'pdf']);
+        (new MediaWhitelistSubscriber())->onWhitelist($event);
 
         self::assertContains('dwg', $event->getWhitelist());
         self::assertContains('jpg', $event->getWhitelist());
@@ -42,98 +36,63 @@ final class MediaWhitelistSubscriberTest extends TestCase
     }
 
     /**
-     * Was: Ein Media-Upload ohne den Herkunfts-Marker am Context — also jeder
-     *      andere Upload im Shop (Admin-Medienverwaltung, anderes Plugin).
-     * Warum: Erweiterte der Subscriber die Whitelist für ALLE Uploads, wäre `zip`
-     *        shopweit erlaubt, sobald ein Admin es in die Plugin-Config einträgt,
-     *        um Kunden ZIPs an Bestellungen anhängen zu lassen — auch für
-     *        öffentliche Medien.
-     * Erwartet: Whitelist unverändert.
+     * Ist `dwg` nur in einem Kanal freigegeben, muss es genau dort durchgehen. Das Ereignis kennt keinen
+     * Kanal, deshalb trägt das Kennzeichen die Endungen; ohne es gälte die kanalübergreifende
+     * Konfiguration, und die Datei scheiterte im Kern mit 500.
      */
-    public function testForeignUploadLeavesWhitelistUntouched(): void
+    public function testAnExtensionReleasedOnlyInTheChannelPasses(): void
     {
-        $event = new MediaFileExtensionWhitelistEvent(['pdf'], Context::createDefaultContext());
-        $this->subscriber(['allowedExtensions' => 'dwg'])->onWhitelist($event);
+        $event = $this->pluginUploadEvent(['pdf'], ['dwg']);
+        (new MediaWhitelistSubscriber())->onWhitelist($event);
 
-        self::assertSame(['pdf'], $event->getWhitelist());
-    }
-
-    /**
-     * Was: Ein Event ohne Context — bis Shopware 6.8 konstruierbar, danach nicht mehr.
-     * Warum: Ohne Context lässt sich die Herkunft nicht belegen. Fail-closed ist
-     *        hier Pflicht: Im Zweifel lieber ein abgelehnter Plugin-Upload als
-     *        eine stillschweigend shopweite Ausweitung. Zugleich darf der
-     *        Subscriber die Exception aus `getContext()` nicht nach oben lassen —
-     *        sie würde jeden Media-Upload im Shop scheitern lassen.
-     * Erwartet: Whitelist unverändert, keine Exception.
-     */
-    public function testEventWithoutContextLeavesWhitelistUntouched(): void
-    {
-        $event = new MediaFileExtensionWhitelistEvent(['pdf']);
-        $this->subscriber(['allowedExtensions' => 'dwg'])->onWhitelist($event);
-
-        self::assertSame(['pdf'], $event->getWhitelist());
-    }
-
-    /**
-     * Was: Plugin deaktiviert.
-     * Warum: Ist die Upload-Funktion aus, darf der Subscriber die Core-Whitelist
-     *        nicht anfassen (POLS).
-     * Erwartet: Whitelist unverändert.
-     */
-    public function testDisabledPluginLeavesWhitelistUntouched(): void
-    {
-        $event = $this->pluginUploadEvent(['pdf']);
-        $this->subscriber(['enabled' => false, 'allowedExtensions' => 'dwg'])->onWhitelist($event);
-
-        self::assertSame(['pdf'], $event->getWhitelist());
-    }
-
-    /**
-     * Was: Admin trägt gefährliche Endungen (`svg`, `php`) in die Config.
-     * Warum: KERN-SICHERHEITSNACHWEIS — geblacklistete Endungen werden bereits
-     *        im PluginConfigProvider verworfen und dürfen nicht über den
-     *        Subscriber für private Media freigegeben werden (Fail-open).
-     * Erwartet: `svg`/`php` fehlen, harmloses `dwg` ist drin.
-     */
-    public function testBlacklistedExtensionNeverReachesWhitelist(): void
-    {
-        $event = $this->pluginUploadEvent(['pdf']);
-        $this->subscriber(['allowedExtensions' => 'svg,php,dwg'])->onWhitelist($event);
-
-        self::assertNotContains('svg', $event->getWhitelist());
-        self::assertNotContains('php', $event->getWhitelist());
         self::assertContains('dwg', $event->getWhitelist());
     }
 
     /**
-     * Event mit markiertem Context — so, wie der Upload-Service des Plugins es auslöst.
-     *
-     * @param array<string> $whitelist
+     * Ohne Herkunftsmarke, also bei jedem anderen Upload im Shop, bleibt die Liste unverändert. Sonst
+     * wäre ein für Kundenanhänge eingetragenes `zip` shopweit erlaubt, auch für öffentliche Medien.
      */
-    private function pluginUploadEvent(array $whitelist): MediaFileExtensionWhitelistEvent
+    public function testForeignUploadLeavesWhitelistUntouched(): void
     {
-        $context = Context::createDefaultContext();
-        $context->addExtension(OrderAttachmentUploadScope::NAME, new OrderAttachmentUploadScope());
+        $event = new MediaFileExtensionWhitelistEvent(['pdf'], new Context(new SystemSource()));
+        (new MediaWhitelistSubscriber())->onWhitelist($event);
 
-        return new MediaFileExtensionWhitelistEvent($whitelist, $context);
+        self::assertSame(['pdf'], $event->getWhitelist());
     }
 
     /**
-     * @param array<string, mixed> $overrides
+     * Ein Ereignis ohne Kontext lässt sich bis Shopware 6.8 noch bauen. Ohne Kontext ist die
+     * Herkunft nicht belegbar, und im Zweifel ist ein abgelehnter Plugin-Upload besser als eine
+     * stille shopweite Freigabe. Die Ausnahme aus `getContext()` darf dabei nicht durchschlagen,
+     * sonst scheiterte jeder Medienupload im Shop.
      */
-    private function subscriber(array $overrides): MediaWhitelistSubscriber
+    public function testEventWithoutContextLeavesWhitelistUntouched(): void
     {
-        $map = [];
-        foreach ($overrides as $key => $value) {
-            $map[PluginConfigProvider::DOMAIN . $key] = $value;
-        }
+        $event = new MediaFileExtensionWhitelistEvent(['pdf']);
+        (new MediaWhitelistSubscriber())->onWhitelist($event);
 
-        $systemConfig = $this->createMock(SystemConfigService::class);
-        $systemConfig->method('get')->willReturnCallback(
-            static fn (string $key, ?string $salesChannelId = null) => $map[$key] ?? null,
-        );
+        self::assertSame(['pdf'], $event->getWhitelist());
+    }
 
-        return new MediaWhitelistSubscriber(new PluginConfigProvider($systemConfig));
+    public function testAScopeWithoutExtensionsLeavesWhitelistUntouched(): void
+    {
+        $event = $this->pluginUploadEvent(['pdf'], []);
+        (new MediaWhitelistSubscriber())->onWhitelist($event);
+
+        self::assertSame(['pdf'], $event->getWhitelist());
+    }
+
+    /**
+     * Ereignis mit markiertem Kontext, so wie der Uploaddienst des Plugins es auslöst.
+     *
+     * @param list<string> $whitelist
+     * @param list<string> $allowedExtensions
+     */
+    private function pluginUploadEvent(array $whitelist, array $allowedExtensions): MediaFileExtensionWhitelistEvent
+    {
+        $context = new Context(new SystemSource());
+        $context->addExtension(OrderAttachmentUploadScope::NAME, new OrderAttachmentUploadScope($allowedExtensions));
+
+        return new MediaFileExtensionWhitelistEvent($whitelist, $context);
     }
 }

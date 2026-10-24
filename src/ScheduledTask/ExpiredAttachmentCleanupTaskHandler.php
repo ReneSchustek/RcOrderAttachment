@@ -23,17 +23,20 @@ use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Throwable;
 
 /**
- * @internal
+ * Löscht abgelaufene Anhänge in zwei Schritten.
  *
- * Zweistufiges Löschen:
- * 1. Anhang-Datensätze (rc_order_attachment) älter als Retention werden entfernt.
- * 2. Erst danach werden Media-Records gelöscht, die KEINE referenzierenden
- *    Anhang-Datensätze mehr haben. So bleibt das Media erhalten, solange noch
- *    eine andere (jüngere) Order — z. B. aus einem Cart-Split — darauf zeigt.
+ * Zuerst gehen die `rc_order_attachment`-Zeilen, die älter als die Frist sind. Erst danach löscht
+ * der Handler die Medien, auf die keine Zeile mehr zeigt. So bleibt ein Medium erhalten, solange
+ * eine jüngere Zeile einer anderen Bestellung noch darauf verweist.
+ *
+ * @internal
  */
 #[AsMessageHandler(handles: ExpiredAttachmentCleanupTask::class)]
 final class ExpiredAttachmentCleanupTaskHandler extends ScheduledTaskHandler
 {
+    // Begrenzt Speicher und Dauer eines Laufs. Bei täglichem Lauf löscht die Aufgabe höchstens
+    // 500 Anhänge am Tag; was darüber liegt, folgt in den nächsten Läufen. Ein größerer Wert
+    // verlängert die Löschanfrage an Medien und Dateisystem entsprechend.
     private const BATCH_SIZE = 500;
 
     /**
@@ -88,10 +91,11 @@ final class ExpiredAttachmentCleanupTaskHandler extends ScheduledTaskHandler
     }
 
     /**
-     * @return array<string, string> Key = attachmentId, Value = mediaId
+     * @return array<string, string> Schlüssel ist die Anhang-ID, Wert die Medien-ID
      */
     private function fetchExpired(string $cutoff): array
     {
+        // Nur die Live-Fassung der Bestellung: Zeilen an einer Entwurfsversion verschwinden mit ihr.
         $rows = $this->connection->fetchAllAssociative(
             <<<'SQL'
             SELECT LOWER(HEX(id)) AS id, LOWER(HEX(media_id)) AS media_id
@@ -134,6 +138,8 @@ final class ExpiredAttachmentCleanupTaskHandler extends ScheduledTaskHandler
         try {
             $this->attachmentRepository->delete($payload, $context);
         } catch (Throwable $exception) {
+            // Kein Abbruch: Scheitert das Löschen, zeigen die Zeilen weiter auf ihre Medien, und
+            // der folgende Schritt lässt diese Medien stehen.
             $this->logger->error('rc_order_attachment.cleanup.expired.attachment_delete_failed', [
                 'exception' => $exception::class,
                 'message' => $exception->getMessage(),

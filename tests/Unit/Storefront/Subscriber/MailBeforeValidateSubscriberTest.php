@@ -27,17 +27,17 @@ use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
 
 /**
- * Unit-Tests für den Mail-Anhang-Subscriber. Prüft alle drei Gates
- * (Order-Vorhandensein, Plugin-/Mail-Toggle, Whitelist-Template), das
- * Hängen + Merging der `binAttachments`-Daten, das Status-Tracking
- * (`attached` / `partial_failure` / `failed`) und den optionalen
- * Retry-Dispatch via `enableMailRetry`.
+ * Prüft den Subscriber, der die Kundendateien an die Bestätigungsmail hängt: die drei
+ * Vorbedingungen (Bestellung vorhanden, Schalter an, Vorlage freigegeben), das Ergänzen von
+ * `binAttachments`, den Status `attached`, `partial_failure` oder `failed` und den zuschaltbaren
+ * Wiederholungsversuch über `enableMailRetry`. Hängt hier etwas falsch, bekommt der Support die
+ * Datei nicht oder jede Statusmail trägt sie erneut.
  */
 final class MailBeforeValidateSubscriberTest extends TestCase
 {
     private const ORDER_ID = '11111111111111111111111111111111';
 
-    /** Reale Flow-Event-Namen — Shopware setzt NIE einen Template-Type-Namen als `eventName`. */
+    /** Echte Flow-Ereignisnamen; als `eventName` setzt Shopware nie den Namen eines Vorlagentyps. */
     private const EVENT_ORDER_PLACED = 'checkout.order.placed';
 
     private const EVENT_SHIPPED = 'state_enter.order_delivery.state.shipped';
@@ -47,10 +47,7 @@ final class MailBeforeValidateSubscriberTest extends TestCase
     private const TYPE_ORDER_CONFIRMATION = 'order_confirmation_mail';
 
     /**
-     * Was: Template-Daten enthalten keine `order`.
-     * Warum: Erste Gate-Stufe — Mail-Templates ohne Order-Kontext (z. B.
-     *        Newsletter) dürfen keine Order-Anhänge bekommen.
-     * Erwartet: Kein `binAttachments`-Eintrag im Event-Daten-Array.
+     * Erste Vorbedingung: Mails ohne Bestellung, etwa ein Newsletter, bekommen keine Anhänge.
      */
     public function testSkipsWhenNoOrderInTemplateData(): void
     {
@@ -66,17 +63,14 @@ final class MailBeforeValidateSubscriberTest extends TestCase
     }
 
     /**
-     * Was: Plugin-Config hat `attachToConfirmationMail = false`.
-     * Warum: Zweite Gate-Stufe — Operator hat den Mail-Anhang explizit
-     *        ausgeschaltet (z. B. Datenschutz-Wunsch oder Mailbox-Overflow-
-     *        Vermeidung). Subscriber muss früh raus, kein DAL-Roundtrip.
-     * Erwartet: Kein `binAttachments`-Eintrag, kein `attach`-Versuch.
+     * Zweite Vorbedingung: Ist der Mailanhang abgeschaltet, etwa aus Datenschutzgründen oder
+     * wegen voller Postfächer, steigt der Subscriber vor jeder Datenbankabfrage aus.
      */
     public function testSkipsWhenPluginOrMailToggleDisabled(): void
     {
-        // Repository und MediaService dürfen nicht angefasst werden — das belegt den frühen
-        // Ausstieg. Ohne diese Erwartung bestände der Test auch, wenn der Subscriber den vollen
-        // Weg ginge und nur zufällig nichts fände.
+        // Erst dass Repository und MediaService unberührt bleiben, belegt den frühen Ausstieg.
+        // Ohne diese Erwartung bestünde der Test auch, wenn der Subscriber den vollen Weg ginge
+        // und nur zufällig nichts fände.
         $sub = $this->subscriberWithUntouchedLoader(['attachToConfirmationMail' => false]);
 
         $event = new MailBeforeValidateEvent([], Context::createDefaultContext(), ['order' => $this->order()]);
@@ -86,13 +80,9 @@ final class MailBeforeValidateSubscriberTest extends TestCase
     }
 
     /**
-     * Was: Zwei Anhänge, einer davon ohne geladenes Media.
-     * Warum: Der `markPartialFailure`-Zweig war ungetestet. Er trägt die Telemetrie, an der der
-     *        Betrieb erkennt, dass eine Mail unvollständig rausging — wird er still zu
-     *        `markFailed` oder `markAttached`, sieht der Support entweder Alarm ohne Anlass oder
-     *        gar nichts.
-     * Erwartet: Der intakte Anhang hängt an der Mail, `markPartialFailure` wird genau einmal
-     *           gerufen, `markAttached` und `markFailed` nicht.
+     * An `partial_failure` erkennt der Betrieb, dass eine Mail unvollständig hinausging. Würde
+     * daraus still `failed` oder `attached`, sähe der Support Alarm ohne Anlass oder gar nichts.
+     * Der intakte Anhang geht trotzdem mit.
      */
     public function testMarksPartialFailureWhenOneAttachmentCannotBeLoaded(): void
     {
@@ -120,17 +110,13 @@ final class MailBeforeValidateSubscriberTest extends TestCase
 
         $sub->onMailBeforeValidate($event);
 
-        $bin = $event->getData()[MailBeforeValidateSubscriber::DATA_KEY_BIN_ATTACHMENTS];
-        self::assertCount(1, $bin, 'der intakte Anhang muss trotzdem mitgehen');
-        self::assertSame('gut.pdf', $bin[0]['fileName']);
+        self::assertCount(1, self::binAttachments($event), 'der intakte Anhang muss trotzdem mitgehen');
+        self::assertSame('gut.pdf', self::attachmentAt($event, 0)['fileName']);
     }
 
     /**
-     * Was: Ein einziger Anhang, dessen Media nicht geladen ist.
-     * Warum: Gegenstück zum Teil-Fehlschlag — schlägt alles fehl, muss `markFailed` greifen.
-     *        Beide Zweige zusammen nageln die Unterscheidung fest, auf die sich der Support
-     *        verlässt.
-     * Erwartet: `markFailed` einmal, kein `binAttachments`-Eintrag.
+     * Gegenstück zum Teilfehlschlag: Scheitert alles, lautet der Status `failed`. Erst beide
+     * Tests zusammen halten die Unterscheidung fest, auf die sich der Support verlässt.
      */
     public function testMarksFailedWhenNoAttachmentCanBeLoaded(): void
     {
@@ -157,11 +143,8 @@ final class MailBeforeValidateSubscriberTest extends TestCase
     }
 
     /**
-     * Was: Happy-Path mit einem geladenen Anhang und Default-Konfiguration.
-     * Warum: Der zentrale Use-Case — Bestätigungs-Mail soll die Datei
-     *        binär anhängen UND den Status auf `attached` schreiben (Telemetrie).
-     * Erwartet: `binAttachments[0]` enthält Filename + Content, bestehende
-     *           Mail-Daten bleiben erhalten, `markAttached` wird einmal gerufen.
+     * Der zentrale Fall: Die Bestätigungsmail trägt die Datei, der Status lautet `attached`, und
+     * die übrigen Maildaten bleiben unberührt.
      */
     public function testAddsAttachmentsToDataAndMarksAttached(): void
     {
@@ -186,19 +169,15 @@ final class MailBeforeValidateSubscriberTest extends TestCase
 
         $data = $event->getData();
         self::assertArrayHasKey(MailBeforeValidateSubscriber::DATA_KEY_BIN_ATTACHMENTS, $data);
-        self::assertCount(1, $data[MailBeforeValidateSubscriber::DATA_KEY_BIN_ATTACHMENTS]);
-        self::assertSame('foo.pdf', $data[MailBeforeValidateSubscriber::DATA_KEY_BIN_ATTACHMENTS][0]['fileName']);
-        self::assertSame('BINARY-CONTENT', $data[MailBeforeValidateSubscriber::DATA_KEY_BIN_ATTACHMENTS][0]['content']);
-        self::assertSame('value', $data['someExisting']);
+        self::assertCount(1, self::binAttachments($event));
+        self::assertSame('foo.pdf', self::attachmentAt($event, 0)['fileName']);
+        self::assertSame('BINARY-CONTENT', self::attachmentAt($event, 0)['content']);
+        self::assertSame('value', $data['someExisting'] ?? null);
     }
 
     /**
-     * Was: Event hat bereits einen `binAttachments`-Eintrag (z. B. Rechnung
-     *      aus Shopware-Standard).
-     * Warum: Andere Plugins/Shopware-Core könnten bereits Mail-Anhänge
-     *        hinzugefügt haben. Wir dürfen sie nicht überschreiben — Merging
-     *        statt Replace.
-     * Erwartet: `binAttachments` enthält zwei Einträge nach dem Run.
+     * Kern oder andere Plugins können schon Anhänge eingetragen haben, etwa die Rechnung. Die
+     * Kundendatei kommt dazu, statt sie zu ersetzen.
      */
     public function testMergesWithExistingBinAttachments(): void
     {
@@ -221,16 +200,12 @@ final class MailBeforeValidateSubscriberTest extends TestCase
         );
         $sub->onMailBeforeValidate($event);
 
-        self::assertCount(2, $event->getData()['binAttachments']);
+        self::assertCount(2, self::binAttachments($event));
     }
 
     /**
-     * Was: `eventName` ist `state_enter.order_delivery.state.shipped`,
-     *      Whitelist enthält nur `order_confirmation_mail`.
-     * Warum: Dritte Gate-Stufe — Whitelist verhindert, dass die Anhänge bei
-     *        Versand-/Storno-Mails erneut mitgehängt werden. Sonst würde jede
-     *        Order-State-Change-Mail die Mitarbeiter-Mailbox sprengen.
-     * Erwartet: Kein `binAttachments`-Eintrag.
+     * Dritte Vorbedingung: Steht nur `order_confirmation_mail` in der Freigabeliste, bekommt die
+     * Versandmail keinen Anhang. Sonst hinge jede Statusmail die Dateien erneut an.
      */
     public function testSkipsWhenTemplateNotInWhitelist(): void
     {
@@ -252,14 +227,10 @@ final class MailBeforeValidateSubscriberTest extends TestCase
     }
 
     /**
-     * Was: Produktiv-Realität — Default-Whitelist `order_confirmation_mail`,
-     *      `eventName` ist der Flow-Event-Name `checkout.order.placed`, der
-     *      Template-Type wird über `data['templateId']` aufgelöst.
-     * Warum: Prüfte der Subscriber nur `templateData['mailTemplate']` (existiert in
-     *        Shopware 6.7 nicht) mit Fallback auf `eventName`, verglich er
-     *        `checkout.order.placed` gegen `order_confirmation_mail` — kein Treffer,
-     *        und es ginge NIE ein Anhang an die Bestätigungs-Mail.
-     * Erwartet: Genau ein `binAttachments`-Eintrag mit Dateiname und Inhalt.
+     * So sieht es im Betrieb aus: Vorgabe `order_confirmation_mail`, als `eventName` steht
+     * `checkout.order.placed`, und der Vorlagentyp kommt erst über `data['templateId']`. Wer sich
+     * auf `templateData['mailTemplate']` verlässt (gibt es in Shopware 6.7 nicht) und auf
+     * `eventName` zurückfällt, findet nie einen Treffer, und kein Anhang geht hinaus.
      */
     public function testAttachesWithDefaultWhitelistWhenTemplateTypeResolves(): void
     {
@@ -280,18 +251,14 @@ final class MailBeforeValidateSubscriberTest extends TestCase
 
         $data = $event->getData();
         self::assertArrayHasKey(MailBeforeValidateSubscriber::DATA_KEY_BIN_ATTACHMENTS, $data);
-        self::assertCount(1, $data[MailBeforeValidateSubscriber::DATA_KEY_BIN_ATTACHMENTS]);
-        self::assertSame('zeichnung.pdf', $data[MailBeforeValidateSubscriber::DATA_KEY_BIN_ATTACHMENTS][0]['fileName']);
-        self::assertSame('PDF-BYTES', $data[MailBeforeValidateSubscriber::DATA_KEY_BIN_ATTACHMENTS][0]['content']);
+        self::assertCount(1, self::binAttachments($event));
+        self::assertSame('zeichnung.pdf', self::attachmentAt($event, 0)['fileName']);
+        self::assertSame('PDF-BYTES', self::attachmentAt($event, 0)['content']);
     }
 
     /**
-     * Was: Der Template-Type lässt sich nicht auflösen (kein `templateId`,
-     *      gelöschtes Template oder DB-Fehler) und der `eventName` steht
-     *      nicht in der Whitelist.
-     * Warum: Fail-closed. Lieber kein Anhang als ein Kundendokument an einer
-     *        Mail, deren Typ wir nicht kennen (z. B. Storno an Dritte).
-     * Erwartet: Kein `binAttachments`-Eintrag.
+     * Lässt sich der Vorlagentyp nicht auflösen und steht auch `eventName` nicht in der Liste,
+     * geht kein Anhang mit. Lieber keiner als ein Kundendokument an einer Mail unbekannten Typs.
      */
     public function testSkipsWhenTemplateTypeCannotBeResolved(): void
     {
@@ -314,11 +281,8 @@ final class MailBeforeValidateSubscriberTest extends TestCase
     }
 
     /**
-     * Was: Admin trägt statt des Template-Type-Namens den Flow-Event-Namen
-     *      `checkout.order.placed` in die Whitelist ein.
-     * Warum: Das Admin-Feld ist Freitext. Beide Schreibweisen sollen greifen,
-     *        damit eine plausible Eingabe nicht stillschweigend wirkungslos ist.
-     * Erwartet: Anhang wird gehängt, obwohl der Resolver nichts liefert.
+     * Das Feld in der Verwaltung ist Freitext, und `checkout.order.placed` ist eine plausible
+     * Eingabe. Auch der Ereignisname greift deshalb, obwohl der Resolver hier nichts liefert.
      */
     public function testAcceptsFlowEventNameAsWhitelistEntry(): void
     {
@@ -337,16 +301,13 @@ final class MailBeforeValidateSubscriberTest extends TestCase
 
         $sub->onMailBeforeValidate($event);
 
-        self::assertCount(1, $event->getData()[MailBeforeValidateSubscriber::DATA_KEY_BIN_ATTACHMENTS]);
+        self::assertCount(1, self::binAttachments($event));
     }
 
     /**
-     * Was: Anhang ohne Media-Entity (verlorene Assoziation), `enableMailRetry = true`.
-     * Warum: Status muss als `failed` markiert werden, damit der Operator es
-     *        sieht. Zusätzlich wird der Retry-Handler über die Queue angestoßen,
-     *        weil der Storage-Hiccup eventuell von selbst heilt.
-     * Erwartet: `markFailed` einmal, `markAttached` nie, Message-Dispatch
-     *           einmal mit `RetryFailedMailAttachmentsMessage`.
+     * Der Status lautet `failed`, damit der Betrieb es sieht. Mit `enableMailRetry` geht
+     * zusätzlich ein Wiederholungsauftrag in die Warteschlange, weil ein kurzer Speicherausfall
+     * von selbst vorbeigehen kann.
      */
     public function testFailedAttachmentMarksFailureAndDispatchesRetryWhenEnabled(): void
     {
@@ -359,7 +320,7 @@ final class MailBeforeValidateSubscriberTest extends TestCase
             ->method('dispatch')
             ->willReturn(new Envelope(new stdClass()));
 
-        // Attachment ohne MediaEntity → buildOne wirft MediaNotLoadedException.
+        // Ohne MediaEntity wirft `buildOne()` eine `MediaNotLoadedException`.
         $brokenAttachment = $this->attachmentWithoutMedia('cccccccccccccccccccccccccccccccc', 'broken.pdf');
 
         $sub = $this->subscriber(
@@ -381,11 +342,8 @@ final class MailBeforeValidateSubscriberTest extends TestCase
     }
 
     /**
-     * Was: Anhang fehlgeschlagen, aber `enableMailRetry = false` (Default).
-     * Warum: Retry ist Opt-in — ohne aktive Konfiguration darf nichts in die
-     *        Queue dispatcht werden (Operator hat sich bewusst gegen Auto-Retry
-     *        entschieden, z. B. wegen Mail-Dupe-Risiko).
-     * Erwartet: `markFailed` einmal, kein Message-Dispatch.
+     * Die Wiederholung ist zuschaltbar und standardmäßig aus, etwa wegen der Gefahr doppelter
+     * Mails. Ohne Schalter geht nichts in die Warteschlange.
      */
     public function testFailedAttachmentMarksFailureButDoesNotDispatchWhenOptOut(): void
     {
@@ -440,8 +398,8 @@ final class MailBeforeValidateSubscriberTest extends TestCase
     }
 
     /**
-     * Fake statt Mock: der Resolver hat genau eine Methode und der Rückgabewert
-     * ist der ganze Vertrag. `null` = Lookup fehlgeschlagen oder keine templateId.
+     * Eine Attrappe statt eines Mocks, weil der Resolver genau eine Methode hat und ihr
+     * Rückgabewert der ganze Vertrag ist. `null` heißt: Abfrage gescheitert oder keine `templateId`.
      */
     private function templateTypeResolver(?string $technicalName): MailTemplateTypeResolverInterface
     {
@@ -458,13 +416,11 @@ final class MailBeforeValidateSubscriberTest extends TestCase
     }
 
     /**
-     */
-    /**
-     * Subscriber, dessen Anhang-Repository **nie** befragt werden darf.
+     * Subscriber, dessen Anhangsrepository nie befragt werden darf.
      *
-     * Ein Gate-Test, der nur die Abwesenheit des `binAttachments`-Schlüssels prüft, ist vakuant:
-     * Er bestände auch, wenn der Subscriber den teuren Weg ginge und am Ende nichts fände. Erst
-     * die Never-Erwartung belegt den frühen Ausstieg.
+     * Prüfte ein Test nur, dass `binAttachments` fehlt, bestünde er auch, wenn der Subscriber den
+     * teuren Weg ginge und am Ende nichts fände. Erst die Erwartung „nie aufgerufen" belegt den
+     * frühen Ausstieg.
      *
      * @param array<string, mixed> $configOverrides
      */
@@ -526,9 +482,8 @@ final class MailBeforeValidateSubscriberTest extends TestCase
             'attachToConfirmationMail' => true,
             'stripExifFromImages' => true,
             'rateLimitPerMinute' => 30,
-            // Bewusst der echte Auslieferungs-Default. Ein leerer String hier wäre
-            // irreführend: `PluginConfigProvider::readString()` ersetzt ihn ohnehin
-            // durch genau diesen Wert.
+            // Die echte Vorgabe der Auslieferung. Ein leerer Text wäre irreführend, weil
+            // `PluginConfigProvider::readString()` ihn ohnehin durch genau diesen Wert ersetzt.
             'mailTemplateWhitelist' => self::TYPE_ORDER_CONFIRMATION,
             'enableMailRetry' => false,
         ];
@@ -540,6 +495,30 @@ final class MailBeforeValidateSubscriberTest extends TestCase
         );
 
         return new PluginConfigProvider($systemConfig);
+    }
+
+    /**
+     * Die Anhänge, die der Subscriber an die Mail gehängt hat.
+     *
+     * @return array<mixed>
+     */
+    private static function binAttachments(MailBeforeValidateEvent $event): array
+    {
+        $attachments = $event->getData()[MailBeforeValidateSubscriber::DATA_KEY_BIN_ATTACHMENTS] ?? null;
+        self::assertIsArray($attachments);
+
+        return $attachments;
+    }
+
+    /**
+     * @return array<mixed>
+     */
+    private static function attachmentAt(MailBeforeValidateEvent $event, int $index): array
+    {
+        $attachment = self::binAttachments($event)[$index] ?? null;
+        self::assertIsArray($attachment);
+
+        return $attachment;
     }
 
     private function order(): OrderEntity

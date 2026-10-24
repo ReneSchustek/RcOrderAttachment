@@ -31,14 +31,11 @@ abstract class IntegrationTestCase extends TestCase
 
     protected function createTestOrder(): string
     {
-        // Erzeugt eine Test-Order via Shopware-Test-Fixture-Helpers.
-        // Implementation hängt von der konkreten Shopware-Test-Bootstrap-Variante ab.
-        // Alternativ: `OrderFixture` aus `shopware/core/Test/Fixtures` oder eigene Mini-Order.
         $orderId = Uuid::randomHex();
         // Die Rechnungsadresse muss im selben Schreibvorgang entstehen und von
-        // `billingAddressId` referenziert werden. Eine lose UUID ohne passenden Datensatz
-        // lässt den Fremdschlüssel greifen — der Test brach dann mit einem Fehler ab,
-        // statt das zu prüfen, wofür er da ist.
+        // `billingAddressId` referenziert werden. Mit einer losen UUID ohne passenden
+        // Datensatz greift der Fremdschlüssel, und der Test bricht ab, bevor er prüft,
+        // wofür er da ist.
         $billingAddressId = Uuid::randomHex();
         static::repository('order.repository')->create([[
             'id' => $orderId,
@@ -64,7 +61,7 @@ abstract class IntegrationTestCase extends TestCase
                 'calculatedTaxes' => [],
                 'taxRules' => [],
             ],
-            // Shopware 6.7+ verlangt CashRoundingConfig für Order-Entity (Pflichtfelder).
+            // Shopware 6.7 verlangt beide Rundungsangaben als Pflichtfelder der Bestellung.
             'totalRounding' => [
                 'decimals' => 2,
                 'interval' => 0.01,

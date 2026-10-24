@@ -1,25 +1,17 @@
 import Plugin from 'src/plugin-system/plugin.class';
 
 /**
- * Asynchroner File-Upload auf der Checkout-Confirm-Page.
+ * Lädt auf der Bestätigungsseite des Checkouts die gewählten Dateien einzeln im Hintergrund hoch,
+ * zeigt den Fortschritt, hängt jede angenommene Datei an die Liste und entfernt sie auf Wunsch
+ * wieder. Ist ein Anhang Pflicht, sperrt das Plugin den Bestellknopf, solange die Liste leer ist.
  *
- * Verantwortung:
- *  - Datei-Auswahl im File-Input abfangen
- *  - Client-seitige Pre-Validierung (Extension/Größe/Anzahl) — Server hat
- *    immer das letzte Wort, der Client-Check spart nur einen Roundtrip
- *  - Multipart-POST mit Progress-Anzeige
- *  - Erfolgreiche Uploads in die DOM-Liste einhängen (createElement, kein
- *    innerHTML-Concat — XSS-Defense-in-Depth)
- *  - Entfernen-Buttons asynchron
- *  - Confirm-Submit-Button bei aktiver Pflicht ohne Uploads sperren
+ * Endung, Größe und Anzahl prüft es schon im Browser, um einen vergeblichen Upload zu sparen; das
+ * letzte Wort hat der Server. Neue Listeneinträge entstehen über `createElement` und
+ * `textContent`, nie über zusammengesetztes `innerHTML`, damit ein Dateiname kein HTML einschleust.
  *
- * Kein CSRF-Token: Shopware hat den CSRF-Layer mit 6.5 entfernt (`sw_csrf`
- * existiert nicht mehr). State-Change-Requests sind über POST + das
- * `SameSite=Lax`-Session-Cookie geschützt — ein Cross-Site-POST bekommt die
- * Session gar nicht erst mitgeschickt.
- *
- * Übersetzungen kommen über data-Attribute aus Twig — Snippet-konform, kein
- * hardcoded Deutsch im JS.
+ * Ein CSRF-Token gibt es nicht, weil Shopware die Prüfung mit 6.5 entfernt hat. Ändernde Anfragen
+ * schützt das Sitzungscookie mit `SameSite=Lax`, das eine POST-Anfrage von fremder Seite nicht
+ * mitbekommt. Alle Texte kommen über data-Attribute aus den Snippets der Vorlage.
  */
 export default class RcOrderAttachmentUploadPlugin extends Plugin {
     init() {
@@ -40,9 +32,9 @@ export default class RcOrderAttachmentUploadPlugin extends Plugin {
 
         this._uploadUrl = ds.uploadUrl;
         this._removeUrlTemplate = ds.removeUrlTemplate;
-        // Twig erzeugt die Remove-URL mit einem regex-konformen Dummy-Token
-        // (32 Hex-Zeichen), weil der Symfony-URL-Generator die `requirements`
-        // der Route durchsetzt. Hier wird der Dummy gegen den echten Token getauscht.
+        // Die Vorlage erzeugt die URL zum Entfernen mit einem Platzhalter aus 32 Hexziffern, weil
+        // der URL-Generator von Symfony die `requirements` der Route prüft. Beim Klick wird der
+        // Platzhalter gegen den echten Token getauscht.
         this._removeTokenPlaceholder = ds.removeTokenPlaceholder || '00000000000000000000000000000000';
 
         this._maxFiles = parseInt(ds.maxFiles, 10) || 0;
@@ -52,6 +44,7 @@ export default class RcOrderAttachmentUploadPlugin extends Plugin {
             .toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
         this._required = ds.required === 'true';
 
+        // Englische Rückfalltexte greifen nur, wenn ein data-Attribut fehlt.
         this._texts = {
             remove: ds.textRemove || 'Remove',
             noFiles: ds.textNoFiles || 'No files uploaded.',
@@ -72,6 +65,7 @@ export default class RcOrderAttachmentUploadPlugin extends Plugin {
         this._progress = this.el.querySelector('[data-rc-order-attachment-progress]');
         this._progressBar = this.el.querySelector('[data-rc-order-attachment-progress-bar]');
         this._errorEl = this.el.querySelector('[data-rc-order-attachment-error]');
+        this._errors = [];
     }
 
     _onFilesSelected(event) {
@@ -80,6 +74,8 @@ export default class RcOrderAttachmentUploadPlugin extends Plugin {
             return;
         }
 
+        // Nacheinander statt parallel, damit die Prüfung von Anzahl und Gesamtgröße die schon
+        // angenommenen Dateien mitzählt und der Fortschrittsbalken genau eine Datei zeigt.
         const uploadNext = () => {
             const next = files.shift();
             if (!next) {
@@ -96,6 +92,8 @@ export default class RcOrderAttachmentUploadPlugin extends Plugin {
             this._uploadSingle(next).finally(uploadNext);
         };
 
+        // Die Fehler eines Durchgangs bleiben zusammen stehen, je mit dem Namen der Datei. Erst eine
+        // neue Auswahl leert sie; sonst löschte der Erfolg der nächsten Datei den Grund der vorigen.
         this._clearError();
         this._showProgress();
         uploadNext();
@@ -104,20 +102,20 @@ export default class RcOrderAttachmentUploadPlugin extends Plugin {
     _preValidate(file) {
         const extension = (file.name.split('.').pop() || '').toLowerCase();
         if (this._allowedExtensions.length > 0 && !this._allowedExtensions.includes(extension)) {
-            this._showError(this._errorMessages.extensionNotAllowed || this._texts.generic);
+            this._addError(file, this._errorMessages.extensionNotAllowed || this._texts.generic);
             return false;
         }
         if (this._maxFileSizeBytes > 0 && file.size > this._maxFileSizeBytes) {
-            this._showError(this._errorMessages.fileSizeExceeded || this._texts.generic);
+            this._addError(file, this._errorMessages.fileSizeExceeded || this._texts.generic);
             return false;
         }
         if (this._maxFiles > 0 && this._currentItemCount() >= this._maxFiles) {
-            this._showError(this._errorMessages.fileCountExceeded || this._texts.generic);
+            this._addError(file, this._errorMessages.fileCountExceeded || this._texts.generic);
             return false;
         }
         if (this._maxTotalSizeBytes > 0
             && (this._currentTotalSize() + file.size) > this._maxTotalSizeBytes) {
-            this._showError(this._errorMessages.totalSizeExceeded || this._texts.generic);
+            this._addError(file, this._errorMessages.totalSizeExceeded || this._texts.generic);
             return false;
         }
         return true;
@@ -141,20 +139,21 @@ export default class RcOrderAttachmentUploadPlugin extends Plugin {
             });
 
             xhr.onload = () => {
-                this._handleUploadResponse(xhr);
+                this._handleUploadResponse(xhr, file);
                 resolve();
             };
 
             xhr.onerror = () => {
-                this._showError(this._texts.generic);
+                this._addError(file, this._texts.generic);
                 resolve();
             };
 
-            // Ohne Timeout blockiert eine hängende Verbindung die (sequenzielle)
-            // Upload-Queue dauerhaft — der Nutzer sieht endlos "wird hochgeladen".
+            // Ohne Zeitgrenze hielte eine hängende Verbindung die Warteschlange dauerhaft an, und
+            // der Kunde sähe endlos „wird hochgeladen". Zwei Minuten reichen für 10 MB auch bei
+            // knapp 1 Mbit/s im Mobilnetz; eine größere Datei bei schwacher Leitung bricht ab.
             xhr.timeout = 120000;
             xhr.ontimeout = () => {
-                this._showError(this._texts.generic);
+                this._addError(file, this._texts.generic);
                 resolve();
             };
 
@@ -162,21 +161,20 @@ export default class RcOrderAttachmentUploadPlugin extends Plugin {
         });
     }
 
-    _handleUploadResponse(xhr) {
+    _handleUploadResponse(xhr, file) {
         let body = {};
         try {
             body = JSON.parse(xhr.responseText);
         } catch (e) {
-            this._showError(this._texts.generic);
+            this._addError(file, this._texts.generic);
             return;
         }
 
         if (xhr.status >= 200 && xhr.status < 300 && body && body.success) {
             this._appendUploadItem(body.upload);
-            this._clearError();
         } else {
             const codes = (body && body.errors) || [];
-            this._showError(this._formatErrorCodes(codes));
+            this._addError(file, this._formatErrorCodes(codes));
         }
 
         this._enforceSubmitGuard();
@@ -246,16 +244,15 @@ export default class RcOrderAttachmentUploadPlugin extends Plugin {
         btn.disabled = true;
         const url = this._removeUrlTemplate.replace(this._removeTokenPlaceholder, token);
 
-        // POST statt DELETE: Shopware routet Storefront-State-Changes über POST,
-        // und `SameSite=Lax` schickt das Session-Cookie bei Cross-Site-POST nicht mit.
+        // POST statt DELETE, weil die Storefront Zustandsänderungen über POST abwickelt und
+        // `SameSite=Lax` das Sitzungscookie bei einem POST von fremder Seite zurückhält.
         fetch(url, {
             method: 'POST',
             headers: { 'Accept': 'application/json' },
             credentials: 'same-origin',
         }).then((response) => {
-            // fetch() rejectet NICHT bei HTTP 4xx/5xx — ohne diese Prüfung würde
-            // das DOM-Item auch dann entfernt, wenn der Server die Datei behielt
-            // (Fail-open, DOM/Server-Divergenz). Nur bei 2xx wirklich entfernen.
+            // fetch() schlägt bei 4xx und 5xx nicht fehl. Ohne diese Prüfung verschwände der
+            // Eintrag auch dann aus der Liste, wenn der Server die Datei behalten hat.
             if (!response.ok) {
                 btn.disabled = false;
                 this._showError(this._texts.generic);
@@ -265,8 +262,8 @@ export default class RcOrderAttachmentUploadPlugin extends Plugin {
             if (item) item.remove();
             if (this._currentItemCount() === 0) this._renderEmpty();
             this._enforceSubmitGuard();
-            // WCAG 2.4.3: der Fokus lag auf dem entfernten Button und ginge sonst an
-            // den Seitenanfang. Zurück auf das Datei-Input als logischen Ankerpunkt.
+            // Der Fokus lag auf dem entfernten Knopf und spränge sonst an den Seitenanfang
+            // (WCAG 2.4.3). Das Dateifeld ist der naheliegende Ort, an dem es weitergeht.
             if (this._input) this._input.focus();
         }).catch(() => {
             btn.disabled = false;
@@ -287,6 +284,8 @@ export default class RcOrderAttachmentUploadPlugin extends Plugin {
 
     _enforceSubmitGuard() {
         if (!this._required) return;
+        // Die Sperre im Browser ist nur Bequemlichkeit; durchgesetzt wird die Pflicht im
+        // RequiredAttachmentValidator auf dem Server.
         const submit = document.querySelector('#confirmFormSubmit, button[form="confirmOrderForm"][type="submit"]');
         if (!submit) return;
         submit.disabled = this._currentItemCount() === 0;
@@ -297,8 +296,8 @@ export default class RcOrderAttachmentUploadPlugin extends Plugin {
     }
 
     /**
-     * Liest die Bytes-Größe direkt aus data-Attributen — robust gegen
-     * Locale-Formatierung im Text und stabil bei UI-Refresh.
+     * Liest die Größe in Bytes aus den data-Attributen statt aus dem angezeigten Text, der je
+     * nach Sprache anders formatiert ist.
      */
     _currentTotalSize() {
         let sum = 0;
@@ -339,15 +338,35 @@ export default class RcOrderAttachmentUploadPlugin extends Plugin {
         }
     }
 
+    /**
+     * Ein Fehler zu einer Datei eines Durchgangs; die früheren bleiben stehen.
+     */
+    _addError(file, message) {
+        this._errors.push(file && file.name ? `${file.name}: ${message}` : message);
+        this._renderErrors();
+    }
+
+    /**
+     * Ein Fehler, der für sich steht, etwa beim Entfernen.
+     */
     _showError(message) {
-        if (!this._errorEl) return;
-        this._errorEl.textContent = message;
-        this._errorEl.classList.remove('d-none');
+        this._errors = [message];
+        this._renderErrors();
     }
 
     _clearError() {
+        this._errors = [];
+        this._renderErrors();
+    }
+
+    _renderErrors() {
         if (!this._errorEl) return;
-        this._errorEl.textContent = '';
-        this._errorEl.classList.add('d-none');
+        // Je Fehler eine Zeile, als Text gesetzt: Der Dateiname kommt vom Kunden.
+        this._errorEl.replaceChildren(...this._errors.map((text) => {
+            const line = document.createElement('div');
+            line.textContent = text;
+            return line;
+        }));
+        this._errorEl.classList.toggle('d-none', this._errors.length === 0);
     }
 }

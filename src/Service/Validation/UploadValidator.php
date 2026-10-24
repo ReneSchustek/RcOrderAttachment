@@ -8,23 +8,12 @@ use Ruhrcoder\RcOrderAttachment\Service\Config\PluginConfig;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 /**
- * Orchestriert die Validierungs-Kette in fester Reihenfolge.
+ * Führt die einzelnen Prüfer für einen Upload nacheinander aus.
  *
- * Reihenfolge folgt einem „cheap first / dangerous first"-Prinzip:
- *
- * 1. Plugin aktiv?               (Konfig-Frage, kein I/O)
- * 2. Upload-Fehler vom Browser?  (HTTP-Layer)
- * 3. Datei nicht leer?           (HTTP-Layer)
- * 4. Anzahl-Limit überschritten? (Session-Counter)
- * 5. Endung erlaubt?             (Whitelist — billigster Reject)
- * 6. Endung gefährlich?          (Blacklist — letztes Wort, überstimmt Whitelist)
- * 7. MIME-Typ stimmt mit Endung? (finfo, ein I/O-Read)
- * 8. Magic-Bytes stimmen?        (eigener I/O-Read auf head)
- * 9. Datei-Größe?                (kein I/O nötig — UploadedFile kennt size)
- * 10. Gesamt-Größe?              (Summe + Session-Counter)
- *
- * Die Kette wird NICHT bei erstem Fehler abgebrochen — der Customer soll alle
- * Probleme einer Datei in einem Roundtrip sehen.
+ * Nur zwei Prüfungen brechen sofort ab: ein abgeschaltetes Plugin und ein Upload, den PHP schon
+ * als fehlerhaft gemeldet hat, weil es dann keine Datei zu prüfen gibt. Danach laufen Anzahl,
+ * Endung, Sperrliste, MIME-Typ, Signatur, Dateigröße und Gesamtgröße alle durch, auch nach einem
+ * Befund. So sieht der Kunde alle Probleme einer Datei mit einer einzigen Antwort.
  */
 final class UploadValidator
 {

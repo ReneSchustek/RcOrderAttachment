@@ -1,9 +1,8 @@
 import template from './sw-order-detail-details.html.twig';
 
 /**
- * Hängt die Bestell-Anhang-Card an den Detail-Tab der Bestellung an — direkt
- * hinter die Zusatzfelder. Reiner Template-Override, keine Logik: die `order`
- * steht im Detail-View bereits im Scope.
+ * Setzt die Karte mit den Anhängen in den Reiter „Details" der Bestellung, direkt hinter die
+ * Zusatzfelder. Nur die Vorlage wird überschrieben, weil `order` in der Ansicht schon bereitsteht.
  */
 Shopware.Component.override('sw-order-detail-details', {
     template,

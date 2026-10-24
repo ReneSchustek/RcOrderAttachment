@@ -14,21 +14,16 @@ use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 
 /**
- * Unit-Tests für den Mail-Anhang-Status-Tracker. Prüft, dass das interne
- * Custom-Field auf `order` korrekt geschrieben wird, dass ungültige Order-IDs
- * keinen DAL-Roundtrip verursachen und dass DAL-Fehler nicht den Aufrufpfad
- * (Subscriber/Handler) brechen.
+ * Prüft, wie der Status des Mailanhangs im internen Zusatzfeld der Bestellung landet. Der
+ * Betrieb liest dort ab, ob die Kundendatei angekommen ist; ungültige IDs erreichen die DAL nicht,
+ * und ein Schreibfehler bricht weder Subscriber noch Handler ab.
  */
 final class MailAttachmentStatusTrackerTest extends TestCase
 {
     private const ORDER_ID = '1234567890abcdef1234567890abcdef';
 
     /**
-     * Was: `markAttached` mit einer gültigen Order-ID.
-     * Warum: Der Mail-Versand soll im Custom-Field als „attached" markiert
-     *        werden — die Telemetrie ist Pflicht für Operator-Sichtbarkeit.
-     * Erwartet: Genau ein `update`-Aufruf mit dem Status `attached` im
-     *           Custom-Field-Payload.
+     * Nur am Zusatzfeld sieht der Betrieb, dass die Datei mit der Mail hinausging.
      */
     public function testMarkAttachedWritesCustomField(): void
     {
@@ -47,11 +42,8 @@ final class MailAttachmentStatusTrackerTest extends TestCase
     }
 
     /**
-     * Was: `markPartialFailure` mit gültiger Order-ID.
-     * Warum: Bei mindestens einem fehlgeschlagenen Anhang muss der Operator
-     *        unterscheiden können, ob die Mail komplett oder nur teilweise
-     *        gefehlschlagen ist (Auswirkung auf Kunden-Kommunikation).
-     * Erwartet: `update`-Aufruf mit Status `partial_failure`.
+     * Der Betrieb muss unterscheiden können, ob gar kein oder nur ein Teil der Anhänge fehlt,
+     * denn davon hängt ab, was er dem Kunden schreibt.
      */
     public function testMarkPartialFailureWritesPartialFailureStatus(): void
     {
@@ -70,11 +62,8 @@ final class MailAttachmentStatusTrackerTest extends TestCase
     }
 
     /**
-     * Was: `markFailed` mit ungültiger (Nicht-UUID) Order-ID.
-     * Warum: Ein Aufrufer könnte versehentlich Müll übergeben — die DAL würde
-     *        eine `InvalidUuidException` werfen und den ohnehin schon
-     *        fehlgeschlagenen Mail-Versand zweimal kaputtmachen.
-     * Erwartet: Kein `update`-Aufruf, kein Throw — Guard greift früh.
+     * Mit einer ungültigen ID würfe die DAL eine `InvalidUuidException` und setzte dem ohnehin
+     * gescheiterten Versand einen zweiten Fehler obendrauf. Die Prüfung vorab verhindert den Aufruf.
      */
     public function testInvalidOrderIdIsIgnored(): void
     {
@@ -86,12 +75,8 @@ final class MailAttachmentStatusTrackerTest extends TestCase
     }
 
     /**
-     * Was: DAL-Repository wirft beim Schreiben des Status eine Exception.
-     * Warum: Das Status-Schreiben ist Best-Effort-Telemetrie — wenn die DAL
-     *        ausfällt, darf der Mail-Pfad (Subscriber/Handler) nicht
-     *        mitsterben. Sonst würde ein einzelner DAL-Hiccup die ganze
-     *        Bestätigungs-Mail-Pipeline reißen.
-     * Erwartet: Keine Exception nach außen, Warning-Log mit Kontext.
+     * Der Status ist eine Zusatzinformation. Ein kurzer Ausfall der DAL darf deshalb nicht den
+     * Versand der Bestätigungsmail mitreißen; der Fehler landet als Warnung im Protokoll.
      */
     public function testRepositoryFailureIsLoggedNotPropagated(): void
     {

@@ -27,22 +27,21 @@ use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
 
 /**
- * Unit-Tests für den Order-Placed-Subscriber. Verifiziert vier kritische
- * Verhaltensaspekte: Event-Registrierung mit Priority -500 (nach Cart-Splitter),
- * Snapshot-Reuse bei Multi-Order-Cart-Split, Worker-Mode-Isolation via
- * `ResetInterface`, und Fail-Soft beim Anhang-Versagen.
+ * Prüft, wie die offenen Uploads beim Bestellabschluss zu Anhängen werden: Rang -500 nach dem
+ * Aufteilen des Warenkorbs, derselbe Snapshot für jede Teilbestellung, sofortiges Leeren der
+ * Sitzung, Trennung der Anfragen in langlebigen Workern über `ResetInterface` und ein
+ * nachgeplanter Versuch, wenn ein Anhang scheitert. Jeder dieser Punkte verhindert, dass eine
+ * Kundendatei verloren geht oder bei einer fremden Bestellung landet.
  */
 final class CheckoutOrderPlacedSubscriberTest extends TestCase
 {
+    // Ein beliebiger fester Zeitstempel (November 2023), damit der Test nicht von der Uhr abhängt.
     private const FIXED_UPLOADED_AT = 1_700_000_000;
 
     /**
-     * Was: Event-Subscription mit Priority `-500`.
-     * Warum: Priority muss nach `RcCartSplitter` laufen, damit alle Teil-Orders
-     *        existieren, bevor die Anhänge angeheftet werden — Plugin-Interaktion
-     *        gemäß dem Plugin-Interaktions-Protokoll.
-     * Erwartet: Event `CheckoutOrderPlacedEvent` ist mit `['onOrderPlaced', -500]`
-     *           registriert.
+     * Mit Rang -500 läuft der Subscriber nach `RcCartSplitter`, sodass alle Teilbestellungen
+     * existieren, bevor die Anhänge angeheftet werden. Den Wert legt das Protokoll für das
+     * Zusammenspiel der Plugins fest.
      */
     public function testSubscribesToOrderPlacedAndFinishPageWithCorrectPriority(): void
     {
@@ -51,21 +50,18 @@ final class CheckoutOrderPlacedSubscriberTest extends TestCase
         self::assertArrayHasKey(CheckoutOrderPlacedEvent::class, $events);
         self::assertSame(['onOrderPlaced', -500], $events[CheckoutOrderPlacedEvent::class]);
 
-        // Die Finish-Page hängt bewusst auf Priorität 0: Das −500-Protokoll gilt für das
-        // Order-Placement gegenüber RcCartSplitter, nicht für das idempotente Aufräumen danach.
+        // Die Abschlussseite läuft mit Rang 0. Die -500 regeln nur die Reihenfolge gegenüber
+        // RcCartSplitter beim Bestellabschluss, nicht das wiederholbare Aufräumen danach.
         self::assertArrayHasKey(CheckoutFinishPageLoadedEvent::class, $events);
         self::assertSame(['onFinishPageLoaded', 0], $events[CheckoutFinishPageLoadedEvent::class]);
     }
 
     /**
-     * Was: Die Finish-Page wird erreicht, ohne dass zuvor ein `checkout.order.placed` lief —
-     *      der Fall bei Rückkehr von einem externen Zahlungsanbieter.
-     * Warum: Das Sicherheitsnetz. Bleibt ein Pending-Upload in der Session stehen, zeigt ihn die
-     *        Confirm-Page des nächsten Warenkorbs samt gültigem Remove-Token; ein Klick löscht
-     *        das Media und reißt über `ON DELETE CASCADE` den Anhang der bereits
-     *        abgeschlossenen Bestellung mit — der Datenverlust, den der Test unten für den
-     *        regulären Bestellweg absichert.
-     * Erwartet: Die Session ist danach leer.
+     * Das Sicherheitsnetz für die Rückkehr von einem externen Zahlungsanbieter, bei der die
+     * Abschlussseite ohne vorheriges `checkout.order.placed` in dieser Anfrage erreicht wird.
+     * Bliebe ein offener Upload stehen, zeigte ihn die Bestätigungsseite des nächsten Warenkorbs
+     * samt Token zum Entfernen, und ein Klick risse über `ON DELETE CASCADE` den Anhang der
+     * abgeschlossenen Bestellung mit.
      */
     public function testFinishPageClearsPendingUploadsWithoutPriorOrderPlaced(): void
     {
@@ -92,10 +88,8 @@ final class CheckoutOrderPlacedSubscriberTest extends TestCase
     }
 
     /**
-     * Was: Zweimaliger Aufruf der Finish-Page (F5).
-     * Warum: `clear()` muss idempotent sein — ein Neuladen darf keinen Fehler werfen und nichts
-     *        anderes anfassen.
-     * Erwartet: Kein Fehler, Session bleibt leer.
+     * Lädt der Kunde die Abschlussseite neu, darf das zweite Aufräumen weder werfen noch etwas
+     * anderes anfassen.
      */
     public function testFinishPageIsIdempotent(): void
     {
@@ -115,11 +109,8 @@ final class CheckoutOrderPlacedSubscriberTest extends TestCase
     }
 
     /**
-     * Was: Order-Placed-Event mit zwei Pending-Uploads in der Session.
-     * Warum: Standard-Pfad — beide Anhänge müssen mit der gerade angelegten
-     *        Order verbunden werden. Sonst gehen die hochgeladenen Dateien nach
-     *        Order-Abschluss verloren.
-     * Erwartet: Zwei `attach`-Aufrufe am Manager (einer pro Pending-Upload).
+     * Der Regelfall: Jeder offene Upload wird mit der gerade angelegten Bestellung verknüpft,
+     * sonst gingen die Dateien nach dem Abschluss verloren.
      */
     public function testAttachesPendingUploadsAtOrderPlaced(): void
     {
@@ -137,16 +128,12 @@ final class CheckoutOrderPlacedSubscriberTest extends TestCase
     }
 
     /**
-     * Was: Nach dem Order-Placement ist die Pending-Liste in der Session leer.
-     * Warum: Sonst droht Datenverlust. Erst in `onFinishPageLoaded()` hinter einem
-     *        `snapshotTaken`-Guard geleert, geschähe es nie: Order-Placement
-     *        (`POST /checkout/order`) und Finish-Page (`GET /checkout/finish`) sind
-     *        zwei getrennte Requests; im zweiten wäre das Flag immer `false` (neue
-     *        Instanz bei PHP-FPM, `kernel.reset` im Worker-Mode). Die Datei bliebe
-     *        „pending", die Confirm-Page des nächsten Warenkorbs zeigte sie mit gültigem
-     *        Remove-Token. Ein Klick auf „Entfernen" löschte das Media, und der FK
-     *        `ON DELETE CASCADE` risse den Anhang der bereits abgeschlossenen Bestellung mit.
-     * Erwartet: `count() === 0` unmittelbar nach `onOrderPlaced`.
+     * Die Sitzung wird schon in `onOrderPlaced()` geleert, nicht erst auf der Abschlussseite.
+     * Bestellabschluss (`POST /checkout/order`) und Abschlussseite (`GET /checkout/finish`) sind
+     * getrennte Anfragen, und ein Merker aus der ersten ist in der zweiten nicht mehr gesetzt
+     * (neue Instanz unter PHP-FPM, `kernel.reset` im Worker). Hinge das Leeren an so einem Merker,
+     * bliebe die Datei offen, und ein Klick auf „Entfernen" im nächsten Warenkorb risse über
+     * `ON DELETE CASCADE` den Anhang der abgeschlossenen Bestellung mit.
      */
     public function testPendingStoreIsClearedRightAfterOrderPlaced(): void
     {
@@ -163,12 +150,8 @@ final class CheckoutOrderPlacedSubscriberTest extends TestCase
     }
 
     /**
-     * Was: Cart-Split — zweites `CheckoutOrderPlacedEvent` im selben Request,
-     *      nachdem der Store bereits geleert wurde.
-     * Warum: Das Leeren darf die Mehrfach-Order-Fähigkeit nicht kaputt machen. Der
-     *        Snapshot lebt im Arbeitsspeicher und ist die Quelle für alle Teil-Orders;
-     *        die Session-Liste ist es nicht.
-     * Erwartet: Auch die zweite Teil-Order bekommt ihren Anhang.
+     * Das frühe Leeren darf das Aufteilen des Warenkorbs nicht stören. Quelle für alle
+     * Teilbestellungen ist der Snapshot im Arbeitsspeicher, nicht die Liste in der Sitzung.
      */
     public function testCartSplitStillAttachesAfterStoreWasCleared(): void
     {
@@ -182,17 +165,13 @@ final class CheckoutOrderPlacedSubscriberTest extends TestCase
         $subscriber->onOrderPlaced($this->event('order-1'));
         self::assertSame(0, $store->count());
 
-        // Zweite Teil-Order desselben Requests — speist sich aus dem Snapshot.
+        // Die zweite Teilbestellung derselben Anfrage speist sich aus dem Snapshot.
         $subscriber->onOrderPlaced($this->event('order-2'));
     }
 
     /**
-     * Was: Zwei `CheckoutOrderPlacedEvent` hintereinander (Cart-Split-Szenario).
-     * Warum: Das Plugin `RcCartSplitter` zerlegt eine Bestellung in mehrere
-     *        Teil-Orders — pro Teil-Order feuert das Event. Beide Teil-Orders
-     *        sollen denselben Snapshot der Pending-Uploads erhalten, sonst hat
-     *        die zweite Teil-Order leere Anhänge.
-     * Erwartet: Zwei `attach`-Aufrufe insgesamt (einer pro Order).
+     * `RcCartSplitter` zerlegt eine Bestellung in Teilbestellungen, und für jede kommt das
+     * Ereignis. Beide bekommen denselben Snapshot, sonst bliebe die zweite ohne Anhang.
      */
     public function testReusesSnapshotAcrossMultipleOrdersForCartSplit(): void
     {
@@ -200,7 +179,7 @@ final class CheckoutOrderPlacedSubscriberTest extends TestCase
         $store->add(new PendingUpload('t1', 'media-1', 'a.pdf', 'application/pdf', 100, self::FIXED_UPLOADED_AT));
 
         $manager = $this->createMock(OrderAttachmentManagerInterface::class);
-        // Erwartet: 1 attach beim ersten Order, 1 attach beim zweiten Order = 2 insgesamt
+        // Ein Anhang je Teilbestellung.
         $manager->expects(self::exactly(2))
             ->method('attach')
             ->willReturn(new OrderAttachmentEntity());
@@ -211,13 +190,9 @@ final class CheckoutOrderPlacedSubscriberTest extends TestCase
     }
 
     /**
-     * Was: `reset()` zwischen zwei Customer-Requests im Worker-Mode-Setup.
-     * Warum: Bei Swoole/RoadRunner/FrankenPHP bleibt der Subscriber als
-     *        Singleton zwischen Requests bestehen. Ohne `reset()` würde der
-     *        Snapshot von Customer A für Customer B weiterleben — Cross-Customer-
-     *        Datenleck (DSGVO + Datenintegrität).
-     * Erwartet: Nach `reset()` und leerem Store löst Customer-B-Request keinen
-     *           `attach`-Aufruf aus. Insgesamt nur ein `attach` für Customer A.
+     * In langlebigen Workern (Swoole, RoadRunner, FrankenPHP) überlebt der Subscriber die
+     * Anfrage. Ohne `reset()` hinge die Datei von Kunde A auch an der Bestellung von Kunde B,
+     * ein Datenleck zwischen Kunden.
      */
     public function testResetClearsSnapshotForWorkerModeIsolation(): void
     {
@@ -225,8 +200,7 @@ final class CheckoutOrderPlacedSubscriberTest extends TestCase
         $store->add(new PendingUpload('t1', 'media-1', 'a.pdf', 'application/pdf', 100, self::FIXED_UPLOADED_AT));
 
         $manager = $this->createMock(OrderAttachmentManagerInterface::class);
-        // Erster Request: 1 Attach für Customer A
-        // Nach reset(): zweiter Request mit leerem Store → 0 Attaches für Customer B
+        // Ein Anhang für Kunde A; Kunde B kommt nach `reset()` mit leerem Speicher und bekommt keinen.
         $manager->expects(self::once())
             ->method('attach')
             ->willReturn(new OrderAttachmentEntity());
@@ -234,21 +208,16 @@ final class CheckoutOrderPlacedSubscriberTest extends TestCase
         $subscriber = new CheckoutOrderPlacedSubscriber($manager, $store, $this->permissiveBus(), new NullLogger());
         $subscriber->onOrderPlaced($this->event('order-customer-a'));
 
-        // Worker-Mode-Simulation: reset() läuft am Request-Ende
+        // Im Worker ruft der Kernel `reset()` am Ende jeder Anfrage auf.
         $subscriber->reset();
 
-        // Customer B startet seinen Order-Placement-Pfad mit leerem Store
         $store->clear();
         $subscriber->onOrderPlaced($this->event('order-customer-b'));
     }
 
     /**
-     * Was: Zwei Pending-Uploads, der erste `attach`-Aufruf wirft eine Exception.
-     * Warum: Ein einzelner Anhang-Schreibfehler darf den Order-Placement-Pfad
-     *        nicht reißen — die Bestellung ist bereits fertig, eine harte
-     *        Exception würde die Finish-Page kaputtmachen. Fail-Soft mit Log.
-     * Erwartet: Beide `attach`-Aufrufe werden versucht (kein Early-Exit beim
-     *           ersten Fehler), Exception wird geschluckt + geloggt.
+     * Die Bestellung ist zu diesem Zeitpunkt schon angelegt. Ein einzelner Schreibfehler wird
+     * protokolliert und hält weder die übrigen Anhänge noch die Abschlussseite auf.
      */
     public function testAttachFailureDoesNotBreakOtherUploads(): void
     {
@@ -269,12 +238,9 @@ final class CheckoutOrderPlacedSubscriberTest extends TestCase
     }
 
     /**
-     * Was: Ein Attach schlägt beim Order-Placement fehl.
-     * Warum: Die bereits hochgeladenen Dokumente wären sonst still für die
-     *        Bestellung verloren. Das Media existiert weiter — ein idempotenter
-     *        Queue-Retry muss das Nachverknüpfen einplanen.
-     * Erwartet: Genau eine `RetryOrderAttachmentLinkMessage` für die
-     *           fehlgeschlagene mediaId wird dispatcht.
+     * Das Medium existiert nach einem gescheiterten Verknüpfen weiter. Ohne nachgeplanten
+     * Versuch über die Warteschlange wäre es still für die Bestellung verloren; die Nachricht
+     * trägt nur das gescheiterte Medium.
      */
     public function testSchedulesLinkRetryWhenAttachFails(): void
     {

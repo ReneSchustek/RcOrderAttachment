@@ -9,16 +9,13 @@ use Ruhrcoder\RcOrderAttachment\Service\Validation\ValidationCode;
 use Ruhrcoder\RcOrderAttachment\Service\Validation\ValidationResult;
 
 /**
- * Unit-Tests des Validierungs-Sammlers. Sichert das Akkumulieren mehrerer
- * Fails (kein Fail-fast), die Reihenfolge und den Snippet-Key-Export.
+ * Prüft das Ergebnis einer Validierung: Es sammelt alle Fehler in ihrer Reihenfolge, statt beim
+ * ersten aufzuhören, und gibt ihre Codes als Textbausteinschlüssel aus.
  */
 final class ValidationResultTest extends TestCase
 {
     /**
-     * Was: Frisches `ValidationResult` ohne Fails.
-     * Warum: Default-Zustand muss "valid" sein, sonst würden alle Uploads ohne
-     *        explizites Fail trotzdem als invalid gelten.
-     * Erwartet: `isValid() = true`, `firstCode() = null`, leere Listen.
+     * Ohne Fehler ist das Ergebnis gültig. Wäre es das nicht, scheiterte jeder Upload.
      */
     public function testEmptyIsValid(): void
     {
@@ -31,13 +28,8 @@ final class ValidationResultTest extends TestCase
     }
 
     /**
-     * Was: Zwei `fail()`-Aufrufe in Folge.
-     * Warum: Wir akkumulieren bewusst (kein Fail-Fast) — Customer soll alle
-     *        Probleme einer Datei in einem Roundtrip sehen, nicht den erst-
-     *        besten Fehler. Reihenfolge wird benötigt, weil `firstCode()` der
-     *        Default-Snippet-Key fürs Toast ist.
-     * Erwartet: `isValid() = false`, `firstCode()` = erster Fail,
-     *           `getCodeValues()` enthält beide in Reihenfolge, Context bleibt erhalten.
+     * Der Kunde soll alle Probleme einer Datei auf einmal sehen. `firstCode()` liefert den
+     * ersten Fehler, und der Kontext jedes Fehlers bleibt für die Meldung erhalten.
      */
     public function testFailuresCollectInOrder(): void
     {

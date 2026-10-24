@@ -11,17 +11,15 @@ use Ruhrcoder\RcOrderAttachment\Core\Content\OrderAttachment\OrderAttachmentDefi
 use Ruhrcoder\RcOrderAttachment\Core\Content\OrderAttachment\OrderAttachmentEntity;
 
 /**
- * Unit-Tests für die DAL-Definition: prüft Entity-Name, Collection-/Entity-Klasse
- * und die FieldCollection. Schützt vor Schema-Drift beim Refactoring.
+ * Prüft Name, Klassen und Felder der DAL-Definition. Eine Abweichung fällt sonst erst zur
+ * Laufzeit auf, beim ersten Lesen oder Schreiben eines Anhangs.
  */
 final class OrderAttachmentDefinitionTest extends TestCase
 {
     /**
-     * Was: Klassen-Konstante `ENTITY_NAME` entspricht dem Tabellen-Namen.
-     * Warum: Service-Tags (`shopware.entity.definition`) und externe Plugins
-     *        referenzieren die Konstante. Eine Umbenennung würde
-     *        Plugin-Interaktionen brechen.
-     * Erwartet: `rc_order_attachment`.
+     * Der Name steht zugleich als Text im Tag `shopware.entity.definition` der services.xml und
+     * in jedem Dienstnamen `rc_order_attachment.repository`. Eine Umbenennung allein in der
+     * Konstante bräche diese Stellen und alle Plugins, die das Repository nutzen.
      */
     public function testEntityNameConstant(): void
     {
@@ -29,10 +27,7 @@ final class OrderAttachmentDefinitionTest extends TestCase
     }
 
     /**
-     * Was: `getEntityName()` der Definition.
-     * Warum: Shopware-DAL nutzt diesen String als Repository-Service-Suffix
-     *        (`rc_order_attachment.repository`).
-     * Erwartet: Selber Wert wie die Konstante.
+     * Die DAL bildet aus diesem Namen den Dienst `rc_order_attachment.repository`.
      */
     public function testGetEntityName(): void
     {
@@ -40,10 +35,8 @@ final class OrderAttachmentDefinitionTest extends TestCase
     }
 
     /**
-     * Was: `getEntityClass()` zeigt auf unsere Entity-Klasse.
-     * Warum: DAL instanziiert beim Hydrate genau diese Klasse — falsche
-     *        Verdrahtung würde Type-Errors beim ersten Read auslösen.
-     * Erwartet: `OrderAttachmentEntity::class`.
+     * Die DAL erzeugt beim Lesen Objekte dieser Klasse; eine falsche Angabe führt beim ersten
+     * Lesen zu Typfehlern.
      */
     public function testGetEntityClass(): void
     {
@@ -51,11 +44,8 @@ final class OrderAttachmentDefinitionTest extends TestCase
     }
 
     /**
-     * Was: `getCollectionClass()` zeigt auf unsere typed Collection.
-     * Warum: DAL hydratisiert `search()`-Ergebnisse in diese Collection. Eine
-     *        falsche Klasse würde uns die `OrderAttachmentCollection`-Helfer
-     *        kosten (Generics-Bruch).
-     * Erwartet: `OrderAttachmentCollection::class`.
+     * `search()` liefert seine Ergebnisse in dieser Sammlung. Mit einer anderen Klasse fehlten
+     * deren Helfer, und die Typangaben der Repositorys stimmten nicht mehr.
      */
     public function testGetCollectionClass(): void
     {
@@ -63,11 +53,8 @@ final class OrderAttachmentDefinitionTest extends TestCase
     }
 
     /**
-     * Was: `defineFields()` enthält alle Schema-Felder der Tabelle.
-     * Warum: Der Klassen-Doc verspricht die FieldCollection abzusichern — ein
-     *        versehentlich entferntes Feld (z. B. `orderVersionId`, das die
-     *        Live-/Draft-Trennung trägt) muss der Test rot machen.
-     * Erwartet: Alle erwarteten Property-Namen sind vorhanden.
+     * Ein versehentlich entferntes Feld muss auffallen, besonders `orderVersionId`, an dem die
+     * Trennung von Live-Bestellung und Entwurf hängt.
      */
     public function testDefineFieldsContainsExpectedProperties(): void
     {

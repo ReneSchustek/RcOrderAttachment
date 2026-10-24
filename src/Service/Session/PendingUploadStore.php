@@ -8,15 +8,14 @@ use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Session\SessionInterface;
 
 /**
- * Hält die Liste der vom Customer hochgeladenen, aber noch nicht zur Order
- * gehörenden Dateien in der Session.
+ * Hält in der Sitzung die Dateien, die der Kunde hochgeladen hat und die noch zu keiner Bestellung
+ * gehören.
  *
- * Die Session ist die einzige sinnvolle Quelle, weil die Order zu diesem
- * Zeitpunkt noch nicht existiert und der Customer sowohl Gast als auch
- * eingeloggt sein kann.
+ * Nur die Sitzung taugt dafür: Die Bestellung existiert noch nicht, und der Kunde kann Gast sein,
+ * also ohne Konto, an das sich die Liste hängen ließe.
  *
- * Persistente Sichten (Cleanup, Mail-Versand) lesen NICHT von hier, sondern
- * aus `rc_order_attachment` (bzw. `media`).
+ * Aufräumaufgaben und Mailversand lesen nicht von hier, sondern aus `rc_order_attachment` und
+ * `media`.
  */
 final class PendingUploadStore
 {
@@ -28,13 +27,9 @@ final class PendingUploadStore
     }
 
     /**
-     * Nimmt eine hochgeladene Datei in die Session auf.
-     *
-     * Liefert `false`, wenn es keine Session gibt. Der Rückgabewert ist wichtig: Ohne Session
-     * kann die Datei später keiner Bestellung zugeordnet werden -- sie läge als verwaistes
-     * Medium herum, bis der Orphan-Cleanup sie entfernt. Meldete der Upload trotzdem Erfolg,
-     * sähe der Kunde eine Datei, die nie ankommt. Der Aufrufer muss den Fehlschlag deshalb
-     * behandeln.
+     * Liefert `false`, wenn es keine Sitzung gibt. Der Aufrufer muss das behandeln: Ohne Sitzung
+     * lässt sich die Datei keiner Bestellung zuordnen, und ein gemeldeter Erfolg zeigte dem Kunden
+     * eine Datei, die nie ankommt.
      */
     public function add(PendingUpload $upload): bool
     {
@@ -99,17 +94,6 @@ final class PendingUploadStore
         return \count($this->all());
     }
 
-    /**
-     * Ob überhaupt eine Storefront-Session verfügbar ist. Unterscheidet
-     * „Session vorhanden, aber leer" (Storefront, kein Upload) von „keine
-     * Session" (Store-API/Headless/Admin-Bestellung) — dort existiert die
-     * Confirm-Page-Upload-Möglichkeit gar nicht.
-     */
-    public function sessionAvailable(): bool
-    {
-        return $this->session() !== null;
-    }
-
     public function totalBytes(): int
     {
         $total = 0;
@@ -131,6 +115,7 @@ final class PendingUploadStore
         ));
     }
 
+    // Die Hauptanfrage, weil eine Unteranfrage keine eigene Sitzung trägt.
     private function session(): ?SessionInterface
     {
         $request = $this->requestStack->getMainRequest();

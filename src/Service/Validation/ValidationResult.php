@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Ruhrcoder\RcOrderAttachment\Service\Validation;
 
 /**
- * Sammelt Validierungs-Befunde. Fail-fast wäre für UX schlechter — der Customer
- * soll bei einem Upload alle Probleme der Datei auf einmal sehen.
+ * Sammelt die Befunde der Prüfkette. Ein Abbruch beim ersten Befund wäre einfacher, zwänge den
+ * Kunden aber, eine Datei mehrmals hochzuladen, bis er alle Probleme kennt.
  */
 final class ValidationResult
 {

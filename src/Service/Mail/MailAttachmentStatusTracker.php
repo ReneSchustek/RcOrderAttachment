@@ -13,11 +13,10 @@ use Shopware\Core\Framework\Uuid\Uuid;
 use Throwable;
 
 /**
- * Schreibt das interne Custom-Field `rc_order_attachment_mail_status` auf
- * `order`. Reine DAL-Operation — der MailBeforeValidate-Subscriber bleibt frei
- * von Persistenz-Logik.
+ * Schreibt das interne Zusatzfeld `rc_order_attachment_mail_status` an die Bestellung. Der
+ * Mail-Subscriber und der Wiederhol-Handler müssen dadurch nichts über das Speichern wissen.
  *
- * Idempotent: derselbe Status wird ohne weitere Seiteneffekte erneut gesetzt.
+ * Denselben Status erneut zu setzen hat keine weitere Wirkung.
  */
 final class MailAttachmentStatusTracker implements MailAttachmentStatusTrackerInterface
 {
@@ -59,8 +58,8 @@ final class MailAttachmentStatusTracker implements MailAttachmentStatusTrackerIn
                 ],
             ]], $context);
         } catch (Throwable $exception) {
-            // Status-Schreiben darf den Mail-Versand nicht blockieren —
-            // Telemetrie bleibt ein Best-Effort-Signal.
+            // Der Status ist nur ein Hinweis für den Betrieb; scheitert das Schreiben, soll die
+            // Mail trotzdem hinausgehen.
             $this->logger->warning('rc_order_attachment.mail.status_write_failed', [
                 'orderId' => $orderId,
                 'status' => $status,

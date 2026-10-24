@@ -18,11 +18,16 @@ use Shopware\Core\Framework\Uuid\Exception\InvalidUuidException;
 use Shopware\Core\Framework\Uuid\Uuid;
 
 /**
- * Liest Anhänge konsistent über die DAL — inklusive `media`, damit nachgelagerte
- * Komponenten (Mail-Subscriber, Cleanup-Tasks) ohne Zusatz-Roundtrip arbeiten.
+ * Liest Anhänge über die DAL, immer mitsamt `media` und nur an der Live-Fassung der Bestellung.
+ *
+ * Alle Leser gehen über diese Klasse, damit niemand den Versionsfilter vergisst. Das mitgeladene
+ * Medium erspart Mail-Subscriber und Download eine zweite Abfrage.
  */
 final class OrderAttachmentLoader
 {
+    // Obergrenze je Abfrage, damit eine ungewöhnlich große Bestellung oder Kontoseite den Speicher
+    // nicht sprengt. Bei höchstens 50 Dateien je Bestellung deckt sie 40 Bestellungen voll ab;
+    // was darüber liegt, fällt ohne Meldung weg.
     private const MAX_BATCH_SIZE = 2000;
 
     /**
@@ -40,14 +45,14 @@ final class OrderAttachmentLoader
         }
 
         $criteria = new Criteria([$attachmentId]);
-        // Explizit auf LIVE-Order-Version filtern: Order-Drafts (z. B. aus Admin-Edit)
-        // dürfen nie mit produktiv sichtbaren Daten vermischt werden.
+        // Nur die Live-Fassung: Entwürfe aus einer Bearbeitung in der Verwaltung dürfen sich nicht
+        // mit den sichtbaren Daten mischen.
         $criteria->addFilter(new EqualsFilter('orderVersionId', Defaults::LIVE_VERSION));
         $criteria->addAssociation('media');
         $criteria->setLimit(1);
 
         try {
-            $attachment = $this->attachmentRepository->search($criteria, $context)->first();
+            $attachment = $this->attachmentRepository->search($criteria, $context)->getEntities()->first();
         } catch (InvalidUuidException) {
             throw new AttachmentNotFoundException($attachmentId);
         }
@@ -60,12 +65,11 @@ final class OrderAttachmentLoader
     }
 
     /**
-     * Lädt den Anhang nur, wenn er zur Order des angegebenen Customers gehört.
+     * Lädt den Anhang nur, wenn er zu einer Bestellung des angegebenen Kunden gehört.
      *
-     * Owner-Check über `order.orderCustomer.customerId = :customerId` — Customer
-     * sieht nur seine eigenen Anhänge. „Nicht gefunden" und „nicht autorisiert"
-     * liefern denselben Fehler, damit über die Antwortzeit kein IDOR-Disclosure
-     * möglich ist.
+     * Die Bedingung `order.orderCustomer.customerId` steht in derselben Abfrage. „Nicht gefunden"
+     * und „gehört jemand anderem" enden deshalb in derselben Ausnahme, und eine fremde ID verrät
+     * nicht, ob es sie gibt.
      */
     public function loadByIdForCustomer(string $attachmentId, string $customerId, Context $context): OrderAttachmentEntity
     {
@@ -80,7 +84,7 @@ final class OrderAttachmentLoader
         $criteria->setLimit(1);
 
         try {
-            $attachment = $this->attachmentRepository->search($criteria, $context)->first();
+            $attachment = $this->attachmentRepository->search($criteria, $context)->getEntities()->first();
         } catch (InvalidUuidException) {
             throw new AttachmentNotFoundException($attachmentId);
         }
@@ -105,12 +109,12 @@ final class OrderAttachmentLoader
     }
 
     /**
-     * Batch-Load für die Account-Order-Page. Vermeidet N+1, indem alle Order-IDs
-     * in einer einzigen DAL-Abfrage abgehandelt werden.
+     * Lädt die Anhänge aller Bestellungen einer Seite im Kundenkonto mit einer einzigen Abfrage
+     * statt mit einer je Bestellung.
      *
      * @param list<string> $orderIds
      *
-     * @return array<string, OrderAttachmentCollection> Key = Order-ID
+     * @return array<string, OrderAttachmentCollection> Schlüssel ist die Bestell-ID
      */
     public function loadForOrderIds(array $orderIds, Context $context): array
     {

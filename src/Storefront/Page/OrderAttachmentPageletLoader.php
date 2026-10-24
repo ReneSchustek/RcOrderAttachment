@@ -15,8 +15,9 @@ use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Symfony\Component\HttpFoundation\Request;
 
 /**
- * Sammelt die Daten für Confirm- und Account-Order-Page. Hält die Subscriber
- * frei von Geschäftslogik (SoC) und macht die Query-Orchestrierung testbar.
+ * Sammelt die Daten für die Bestätigungsseite und die Bestellübersicht im Kundenkonto. Die
+ * Subscriber hängen das Ergebnis nur an die Seite und bleiben frei von Abfragelogik, die sich
+ * hier getrennt testen lässt.
  */
 final class OrderAttachmentPageletLoader implements OrderAttachmentPageletLoaderInterface
 {

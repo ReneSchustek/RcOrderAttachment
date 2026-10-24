@@ -7,16 +7,16 @@ namespace Ruhrcoder\RcOrderAttachment\Service\Validation;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 /**
- * Prüft die ersten Bytes der Datei gegen die bekannten Signatur-Patterns.
- * Schützt vor falsch deklarierten Dateien (z. B. .pdf-Endung um eine PHP-Datei
- * herum, oder umbenannte .exe als .png).
+ * Vergleicht die ersten Bytes der Datei mit der Signatur, die zur Endung gehört. So fällt eine
+ * PHP-Datei mit `.pdf` oder ein umbenanntes Programm mit `.png` auf.
  *
- * Für Formate ohne stabile Signatur (TXT, CSV, CAD-Reintext) wird nicht geprüft.
+ * Formate ohne feste Signatur (TXT, CSV, CAD-Formate als Text) lässt der Prüfer durch; für sie
+ * gibt es keinen Eintrag in {@see SIGNATURES}.
  */
 final class MagicBytesValidator
 {
     /**
-     * @var array<string, list<string>> hex-encoded Magic-Bytes je Endung
+     * @var array<string, list<string>> Signaturbytes je Endung, hexadezimal geschrieben
      */
     private const SIGNATURES = [
         'pdf' => ['25504446'], // %PDF
@@ -24,7 +24,7 @@ final class MagicBytesValidator
         'jpeg' => ['ffd8ff'],
         'png' => ['89504e470d0a1a0a'],
         'gif' => ['474946383761', '474946383961'],
-        'webp' => ['52494646'], // RIFF, weitere Prüfung über WEBP-Kennung im Datenstrom
+        'webp' => ['52494646'], // RIFF; die Kennung WEBP an Byte 8 prüft isWebp()
         'bmp' => ['424d'],
         'tif' => ['49492a00', '4d4d002a'],
         'tiff' => ['49492a00', '4d4d002a'],
@@ -38,10 +38,9 @@ final class MagicBytesValidator
     ];
 
     /**
-     * HEIC/HEIF (iPhone-Foto-Format): die Box-Struktur beginnt mit einer
-     * variablen Größen-Box, gefolgt von `ftyp` ab Byte 4 und einer dieser
-     * Brand-Kennungen ab Byte 8. Wir prüfen also nicht mit festen Hex-Prefixes,
-     * sondern explizit über {@see isIsoBaseMediaContainer()}.
+     * HEIC und HEIF, das Fotoformat des iPhones, beginnen mit vier Bytes Boxlänge, die je Datei
+     * schwanken. Danach folgt `ftyp` ab Byte 4 und eine dieser Markenkennungen ab Byte 8. Ein fester
+     * Anfang passt deshalb nicht; die Prüfung läuft über {@see isIsoBaseMediaContainer()}.
      *
      * @var list<string>
      */
@@ -54,8 +53,6 @@ final class MagicBytesValidator
             return;
         }
 
-        // HEIC/HEIF werden separat geprüft (variable Box-Struktur, keine festen
-        // Hex-Prefixes möglich).
         if ($extension === 'heic' || $extension === 'heif') {
             if (!$this->isIsoBaseMediaContainer($file)) {
                 $result->fail(ValidationCode::MAGIC_BYTES_MISMATCH, ['extension' => $extension]);
@@ -68,6 +65,7 @@ final class MagicBytesValidator
             return;
         }
 
+        // 16 Bytes decken die längste Signatur (8 Bytes) und die WEBP-Kennung an Byte 8 bis 11 ab.
         $head = $this->readHead($file, 16);
         if ($head === null) {
             $result->fail(ValidationCode::MAGIC_BYTES_MISMATCH, ['extension' => $extension]);
@@ -91,13 +89,13 @@ final class MagicBytesValidator
 
     private function isWebp(string $head): bool
     {
-        // RIFF????WEBP — Bytes 8–11 müssen 'WEBP' sein.
+        // RIFF, vier Bytes Länge, dann `WEBP` an Byte 8 bis 11.
         return \strlen($head) >= 12 && substr($head, 8, 4) === 'WEBP';
     }
 
     /**
-     * Prüft ISO Base Media File Format (HEIC, HEIF, MP4-Familie).
-     * Bytes 4–7 müssen `ftyp` sein, Bytes 8–11 ist die Brand-Kennung.
+     * Erkennt das ISO Base Media File Format an `ftyp` in Byte 4 bis 7. Zugelassen sind nur die
+     * Markenkennungen aus {@see HEIC_BRANDS} in Byte 8 bis 11, MP4-Dateien fallen also durch.
      */
     private function isIsoBaseMediaContainer(UploadedFile $file): bool
     {

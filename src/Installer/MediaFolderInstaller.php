@@ -14,26 +14,24 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\Uuid\Uuid;
 
 /**
- * Legt einen dedizierten, privaten Media-Folder für die Customer-Uploads an.
+ * Legt einen eigenen, privaten Medienordner für die Uploads der Kunden an.
  *
- * Bewusst kein DefaultFolder mit `entity`-Bindung — die Uploads gehören nicht
- * der `order`-Entity (für die ist der Folder gedacht), sondern stehen logisch
- * dazwischen.
+ * Ein Standardordner mit Bindung an eine Entität passt nicht: Die Uploads gehören weder ganz zur
+ * Bestellung noch zu einer anderen Entität, sondern entstehen vor der Bestellung.
  *
- * Wiedererkannt wird der Ordner über seine ID. Im Medien-Manager ist er ein gewöhnlicher
- * Ordner, den jemand umbenennen kann; eine reine Namenssuche fände ihn dann weder im
- * Orphan-Cleanup noch bei der Deinstallation. Der Cleanup räumte nichts mehr ab, obwohl die
- * Aufbewahrungsfrist etwas anderes verspricht, und beim Deinstallieren blieben Ordner samt
- * privater Kundendateien zurück. Die ID wird deshalb bei der Anlage vermerkt und zuerst
- * gelesen; die Namenssuche bleibt als Rückfall für Bestandsinstallationen ohne Vermerk.
+ * Wiedererkannt wird der Ordner über seine ID. In der Medienverwaltung ist er ein gewöhnlicher
+ * Ordner, den jemand umbenennen kann; eine reine Namenssuche fände ihn dann weder in der
+ * Aufräumaufgabe noch bei der Deinstallation, und private Kundendateien blieben über die
+ * Aufbewahrungsfrist hinaus liegen. Die ID wird deshalb bei der Anlage vermerkt und zuerst
+ * gelesen. Die Namenssuche bleibt als Rückfall für Installationen ohne Vermerk.
  */
 final class MediaFolderInstaller
 {
     public const FOLDER_NAME = 'RcOrderAttachment Customer Uploads';
 
     /**
-     * Ablageort der Ordner-ID. Kein Admin-Feld: Der Wert wird ausschließlich vom Plugin
-     * geschrieben und gelesen (deshalb `internal`), er gehört nicht in die Konfigurations-Maske.
+     * Ablageort der Ordner-ID. Den Wert schreibt und liest nur das Plugin, daher `internal` im
+     * Schlüssel und kein Feld in der Konfigurationsmaske.
      */
     public const FOLDER_ID_CONFIG_KEY = 'RcOrderAttachment.internal.mediaFolderId';
 
@@ -41,10 +39,10 @@ final class MediaFolderInstaller
      * @param EntityRepository<MediaFolderCollection> $mediaFolderRepository
      * @param EntityRepository<MediaFolderConfigurationCollection> $mediaFolderConfigurationRepository
      * @param Connection|null $connection Der Vermerk wird direkt in `system_config` geschrieben und
-     *        gelesen. Nicht über den SystemConfigService: Dessen Schreib-Methoden sind in 6.7
-     *        als veraltet markiert (kommender Parameter `silent`), und ein Wert, den nur das
-     *        Plugin kennt, braucht weder Cache-Invalidierung noch Konfigurations-Event. Im
-     *        Lifecycle steht die Verbindung nicht immer bereit; fehlt sie, bleibt nur die
+     *        gelesen, nicht über den SystemConfigService: Dessen Schreibmethoden sind in 6.7 als
+     *        veraltet markiert (kommender Parameter `silent`), und ein Wert, den nur das Plugin
+     *        kennt, braucht weder Cache-Invalidierung noch Konfigurationsereignis. Bei der
+     *        Installation steht die Verbindung nicht immer bereit; fehlt sie, bleibt nur die
      *        Namenssuche.
      */
     public function __construct(
@@ -68,6 +66,8 @@ final class MediaFolderInstaller
             'id' => $configurationId,
             'createThumbnails' => false,
             'keepAspectRatio' => true,
+            // Wirkungslos, solange `createThumbnails` aus ist. 80 ist ein üblicher JPEG-Wert für
+            // den Fall, dass jemand Vorschaubilder einschaltet.
             'thumbnailQuality' => 80,
             'private' => true,
         ]], $context);
@@ -87,26 +87,26 @@ final class MediaFolderInstaller
     /**
      * Liefert die ID des Plugin-Ordners: erst über den Vermerk, dann über den Namen.
      *
-     * Findet die Namenssuche einen Ordner, wird der Vermerk nachgetragen — eine
-     * Bestandsinstallation heilt sich damit beim ersten Aufruf selbst.
+     * Findet erst die Namenssuche den Ordner, trägt die Methode den Vermerk nach, sodass eine
+     * Installation ohne Vermerk ihn beim ersten Aufruf bekommt.
      */
     public function findFolderId(Context $context): ?string
     {
-        $vermerkt = $this->rememberedFolderId();
-        if ($vermerkt !== null && $this->folderExists($vermerkt, $context)) {
-            return $vermerkt;
+        $remembered = $this->rememberedFolderId();
+        if ($remembered !== null && $this->folderExists($remembered, $context)) {
+            return $remembered;
         }
 
         $criteria = new Criteria();
         $criteria->addFilter(new EqualsFilter('name', self::FOLDER_NAME));
         $criteria->setLimit(1);
 
-        $gefunden = $this->mediaFolderRepository->searchIds($criteria, $context)->firstId();
-        if ($gefunden !== null) {
-            $this->rememberFolderId($gefunden);
+        $found = $this->mediaFolderRepository->searchIds($criteria, $context)->firstId();
+        if ($found !== null) {
+            $this->rememberFolderId($found);
         }
 
-        return $gefunden;
+        return $found;
     }
 
     private function folderExists(string $folderId, Context $context): bool
@@ -124,26 +124,39 @@ final class MediaFolderInstaller
             return null;
         }
 
-        $wert = $this->connection->fetchOne(
+        $value = $this->connection->fetchOne(
             'SELECT JSON_UNQUOTE(JSON_EXTRACT(configuration_value, "$._value"))
              FROM `system_config` WHERE configuration_key = :key LIMIT 1',
             ['key' => self::FOLDER_ID_CONFIG_KEY],
         );
 
-        return \is_string($wert) && Uuid::isValid($wert) ? $wert : null;
+        return \is_string($value) && Uuid::isValid($value) ? $value : null;
     }
 
     private function rememberFolderId(string $folderId): void
     {
-        $this->connection?->executeStatement(
-            'INSERT INTO `system_config` (id, configuration_key, configuration_value, sales_channel_id, created_at)
-             VALUES (:id, :key, :value, NULL, NOW(3))
-             ON DUPLICATE KEY UPDATE configuration_value = :value, updated_at = NOW(3)',
-            [
-                'id' => Uuid::randomBytes(),
-                'key' => self::FOLDER_ID_CONFIG_KEY,
-                'value' => json_encode(['_value' => $folderId], \JSON_THROW_ON_ERROR),
-            ],
-        );
+        // Die Verbindung kann fehlen; dann bleibt der Vermerk aus, und die Namenssuche trägt.
+        if ($this->connection === null) {
+            return;
+        }
+
+        // Löschen und neu schreiben statt `ON DUPLICATE KEY UPDATE`: Der eindeutige Schlüssel umfasst
+        // `sales_channel_id`, und NULL gleicht dort keinem anderen NULL. Jeder Aufruf legte so eine
+        // weitere Zeile an, und das Lesen mit `LIMIT 1` konnte die alte Kennung treffen.
+        $this->connection->transactional(function (Connection $connection) use ($folderId): void {
+            $connection->executeStatement(
+                'DELETE FROM `system_config` WHERE configuration_key = :key AND sales_channel_id IS NULL',
+                ['key' => self::FOLDER_ID_CONFIG_KEY],
+            );
+            $connection->executeStatement(
+                'INSERT INTO `system_config` (id, configuration_key, configuration_value, sales_channel_id, created_at)
+                 VALUES (:id, :key, :value, NULL, NOW(3))',
+                [
+                    'id' => Uuid::randomBytes(),
+                    'key' => self::FOLDER_ID_CONFIG_KEY,
+                    'value' => json_encode(['_value' => $folderId], \JSON_THROW_ON_ERROR),
+                ],
+            );
+        });
     }
 }

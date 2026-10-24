@@ -7,9 +7,9 @@ namespace Ruhrcoder\RcOrderAttachment\Service\Mail;
 use Shopware\Core\Framework\Context;
 
 /**
- * Schreibt das Mail-Anhang-Status-Custom-Field auf `order`. Eigene Schnittstelle,
- * damit der Subscriber/Handler entkoppelt testbar bleibt und eine spätere
- * Audit-Decoration ohne Eingriff in die Caller eingehängt werden kann.
+ * Schreibt den Anhangstatus der Bestellbestätigung an die Bestellung. Die Schnittstelle trennt
+ * Subscriber und Handler vom Speichern, damit Tests sie ohne Datenbank prüfen und ein Dekorator
+ * etwa für ein Prüfprotokoll eingehängt werden kann, ohne die Aufrufer anzufassen.
  */
 interface MailAttachmentStatusTrackerInterface
 {

@@ -17,16 +17,13 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
- * Stellt Anhänge dem Customer im Account-Bereich zur Verfügung (DSGVO Art. 15
- * Auskunft + Art. 17 Löschen).
+ * Liefert Anhänge als Download aus, für den Kunden im Kundenkonto (Auskunft nach Art. 15 DSGVO)
+ * und für Mitarbeiter in der Verwaltung.
  *
- * Owner-Check: Customer darf nur Anhänge seiner eigenen Orders sehen. Die
- * Prüfung läuft gegen `Order.orderCustomer.customerId` und ist hier zentral —
- * der Controller delegiert komplett.
- *
- * Datenfluss: Customer fordert Attachment-Download an → Service lädt Anhang
- * inkl. `order.orderCustomer` und `media` → Owner-Check → Media-Stream als
- * `Content-Disposition: attachment` zurück.
+ * Für Kunden lädt {@see OrderAttachmentLoader::loadByIdForCustomer()} den Anhang nur, wenn
+ * `order.orderCustomer.customerId` zum angemeldeten Kunden passt; die Controller prüfen nichts
+ * selbst. Die Datei geht als Strom mit `Content-Disposition: attachment` hinaus, damit der Browser
+ * sie speichert, statt sie anzuzeigen.
  */
 final class OrderAttachmentDownloadService
 {
@@ -50,13 +47,11 @@ final class OrderAttachmentDownloadService
     }
 
     /**
-     * Stellt einen Anhang einem Admin-Nutzer zur Verfügung (Auftragsbearbeitung).
+     * Liefert einen Anhang an einen Mitarbeiter aus.
      *
-     * Kein Owner-Check: Die Autorisierung liegt hier auf der ACL des aufrufenden
-     * Admin-Endpoints (`order:read`) statt auf einer Customer-Beziehung — ein
-     * Mitarbeiter mit Order-Lese-Recht darf jeden Bestell-Anhang laden. Der
-     * Media-Stream selbst läuft — wie im Customer-Pfad — im System-Scope, weil
-     * das Media privat ist und keine direkte Read-Berechtigung trägt.
+     * Eine Prüfung auf den Besitzer entfällt, weil die aufrufende Route schon das Recht
+     * `order:read` verlangt; wer Bestellungen lesen darf, darf jeden Anhang laden. Gelesen wird
+     * wie beim Kunden im Systemkontext, weil das Medium privat ist.
      */
     public function streamForAdmin(string $attachmentId, Context $context): Response
     {
@@ -76,12 +71,9 @@ final class OrderAttachmentDownloadService
     }
 
     /**
-     * Wirft {@see AttachmentNotFoundException}, wenn:
-     *   - der Anhang nicht existiert
-     *   - er nicht zur Order des Customers gehört
-     *
-     * Beide Fälle liefern denselben HTTP-404, damit kein IDOR-Pfad existiert,
-     * über den ein Angreifer fremde Anhang-IDs validieren könnte.
+     * Wirft {@see AttachmentNotFoundException}, wenn der Anhang nicht existiert oder nicht zu einer
+     * Bestellung des Kunden gehört. Beide Fälle enden im selben 404, damit niemand durch Probieren
+     * herausfindet, welche fremden Anhang-IDs es gibt.
      */
     private function loadAndAuthorize(string $attachmentId, CustomerEntity $customer, Context $context): OrderAttachmentEntity
     {
@@ -102,8 +94,8 @@ final class OrderAttachmentDownloadService
         $filename = $attachment->getOriginalFileName();
 
         $response = new StreamedResponse(function () use ($media, $context): void {
-            // Stream-API verhindert, dass die ganze Datei in PHP-Memory landet.
-            // Sicherheits-Scope-Wechsel: Customer hat keine direkte Media-Read-Berechtigung.
+            // Als Strom gelesen, damit eine große Datei nicht ganz im Arbeitsspeicher landet. Der
+            // Systemkontext ist nötig, weil der Kunde das private Medium nicht direkt lesen darf.
             $context->scope(Context::SYSTEM_SCOPE, function (Context $systemContext) use ($media): void {
                 $stream = $this->mediaService->loadFileStream($media->getId(), $systemContext);
                 $output = fopen('php://output', 'wb');
@@ -113,6 +105,8 @@ final class OrderAttachmentDownloadService
                     return;
                 }
                 try {
+                    // 8 KiB je Block ist die übliche Puffergröße von PHP-Strömen; größere Blöcke
+                    // sparen kaum Aufrufe, kleinere vervielfachen sie.
                     while (!$stream->eof()) {
                         fwrite($output, $stream->read(8192));
                     }
@@ -128,6 +122,8 @@ final class OrderAttachmentDownloadService
             'Content-Disposition',
             HeaderUtils::makeDisposition(HeaderUtils::DISPOSITION_ATTACHMENT, $filename)
         );
+        // `nosniff` hindert den Browser daran, eine als Bild gemeldete Datei doch als HTML
+        // auszuführen; `no-store` hält die private Datei aus jedem Zwischenspeicher heraus.
         $response->headers->set('X-Content-Type-Options', 'nosniff');
         $response->headers->set('Cache-Control', 'private, no-store, max-age=0');
         $response->headers->set('X-Robots-Tag', 'noindex, nofollow');

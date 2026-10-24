@@ -9,9 +9,9 @@ use Shopware\Storefront\Page\Checkout\Confirm\CheckoutConfirmPageLoadedEvent;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
 /**
- * Event-Adapter: delegiert das Sammeln der Upload-Daten an den
- * {@see OrderAttachmentPageletLoaderInterface} und hängt das Resultat als
- * Page-Extension an. Twig rendert die Upload-Section darauf basierend.
+ * Hängt die Daten der Upload-Box an die Bestätigungsseite, aus denen die Vorlage den Bereich
+ * zeichnet. Gesammelt werden sie im {@see OrderAttachmentPageletLoaderInterface}; fehlt die
+ * Erweiterung, weil das Plugin im Kanal aus ist, bleibt der Bereich weg.
  */
 final class CheckoutConfirmPageSubscriber implements EventSubscriberInterface
 {

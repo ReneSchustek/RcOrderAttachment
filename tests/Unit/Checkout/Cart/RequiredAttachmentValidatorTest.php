@@ -12,6 +12,7 @@ use Ruhrcoder\RcOrderAttachment\Service\Session\PendingUpload;
 use Ruhrcoder\RcOrderAttachment\Service\Session\PendingUploadStore;
 use Shopware\Core\Checkout\Cart\Cart;
 use Shopware\Core\Checkout\Cart\Error\ErrorCollection;
+use Shopware\Core\PlatformRequest;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Shopware\Core\System\SystemConfig\SystemConfigService;
 use Symfony\Component\HttpFoundation\Request;
@@ -20,20 +21,17 @@ use Symfony\Component\HttpFoundation\Session\Session;
 use Symfony\Component\HttpFoundation\Session\Storage\MockArraySessionStorage;
 
 /**
- * Unit-Tests für die serverseitige Erzwingung der „Upload Pflicht"-Konfiguration.
- * Verifiziert die vier Branches des Cart-Validators: Plugin aus, Pflicht aus,
- * Pflicht an + leerer Store (Reject), Pflicht an + mindestens ein Upload (OK).
+ * Prüft die Upload-Pflicht auf dem Server. Die Prüfung im Browser lässt sich abschalten, deshalb
+ * entscheidet erst der Warenkorb-Validator, ob eine Bestellung ohne Anhang durchgeht.
  */
 final class RequiredAttachmentValidatorTest extends TestCase
 {
+    // Ein beliebiger fester Zeitstempel (November 2023), damit der Test nicht von der Uhr abhängt.
     private const FIXED_UPLOADED_AT = 1_700_000_000;
 
     /**
-     * Was: Plugin in der Konfiguration deaktiviert.
-     * Warum: Wenn der Operator das Plugin abgeschaltet hat, darf der Validator
-     *        keine Cart-Errors mehr produzieren, sonst ist der Checkout
-     *        blockiert ohne sichtbare Plugin-UI.
-     * Erwartet: Keine Errors in der ErrorCollection.
+     * Bei abgeschaltetem Plugin fehlt das Upload-Feld. Ein Fehler im Warenkorb sperrte dann den
+     * Checkout, ohne dass der Kunde etwas dagegen tun kann.
      */
     public function testIgnoresWhenPluginDisabled(): void
     {
@@ -44,10 +42,7 @@ final class RequiredAttachmentValidatorTest extends TestCase
     }
 
     /**
-     * Was: Plugin aktiv, Upload-Pflicht-Toggle aus.
-     * Warum: Customer darf bei Optional-Upload-Konfiguration immer durchchecken,
-     *        auch ohne Anhang. Sonst zwingen wir Käufer unnötig zum Upload.
-     * Erwartet: Keine Errors.
+     * Ist der Upload freiwillig, darf der Kunde auch ohne Anhang bestellen.
      */
     public function testIgnoresWhenNotRequired(): void
     {
@@ -58,11 +53,8 @@ final class RequiredAttachmentValidatorTest extends TestCase
     }
 
     /**
-     * Was: Plugin aktiv, Pflicht aktiv, aber kein Pending-Upload in der Session.
-     * Warum: Server-seitiges Enforcement — JS-Plugin kann im Browser deaktiviert
-     *        oder umgangen werden, der Server muss die letzte Verteidigungslinie
-     *        gegen Bestellungen ohne Pflicht-Anhang sein.
-     * Erwartet: Genau ein `AttachmentRequiredError` mit `blockOrder() = true`.
+     * Das JavaScript lässt sich im Browser abschalten oder umgehen. Ohne offenen Upload in der
+     * Sitzung muss der Server die Bestellung deshalb mit einem sperrenden Fehler aufhalten.
      */
     public function testRejectsWhenRequiredAndStoreEmpty(): void
     {
@@ -75,18 +67,18 @@ final class RequiredAttachmentValidatorTest extends TestCase
     }
 
     /**
-     * Was: Plugin aktiv, Pflicht aktiv, mindestens ein Pending-Upload in der Session.
-     * Warum: Happy-Path — Customer hat Pflicht erfüllt, Checkout darf weiter.
-     * Erwartet: Keine Errors.
+     * Ein einziger offener Upload in der Sitzung erfüllt die Pflicht.
      */
     public function testAcceptsWhenAtLeastOneUploadInSession(): void
     {
-        $store = $this->store();
+        $stack = $this->requestStack();
+        $store = new PendingUploadStore($stack);
         $store->add(new PendingUpload('t', 'm', 'a.pdf', 'application/pdf', 100, self::FIXED_UPLOADED_AT));
 
         $validator = new RequiredAttachmentValidator(
             $this->configProvider(enabled: true, required: true),
             $store,
+            $stack,
         );
 
         $errors = new ErrorCollection();
@@ -95,11 +87,30 @@ final class RequiredAttachmentValidatorTest extends TestCase
         self::assertCount(0, $errors);
     }
 
-    private function makeValidator(bool $enabled, bool $required): RequiredAttachmentValidator
+    /**
+     * Über die Store-API und die Admin-API gibt es keine Seite zum Hochladen, eine Sperre machte
+     * etwa eine in der Verwaltung angelegte Bestellung unmöglich. Beide Anfragen tragen eine
+     * Sitzung, erkennbar ist der Fall nur am Route-Scope.
+     */
+    public function testIgnoresStoreApiAndAdminApiOrders(): void
     {
+        foreach (['store-api', 'api'] as $scope) {
+            $errors = new ErrorCollection();
+            $this->makeValidator(enabled: true, required: true, scope: $scope)
+                ->validate(new Cart('token'), $errors, $this->ctx());
+
+            self::assertCount(0, $errors, $scope);
+        }
+    }
+
+    private function makeValidator(bool $enabled, bool $required, string $scope = 'storefront'): RequiredAttachmentValidator
+    {
+        $stack = $this->requestStack($scope);
+
         return new RequiredAttachmentValidator(
             $this->configProvider(enabled: $enabled, required: $required),
-            $this->store(),
+            new PendingUploadStore($stack),
+            $stack,
         );
     }
 
@@ -118,15 +129,15 @@ final class RequiredAttachmentValidatorTest extends TestCase
         return new PluginConfigProvider($systemConfig);
     }
 
-    private function store(): PendingUploadStore
+    private function requestStack(string $scope = 'storefront'): RequestStack
     {
-        $session = new Session(new MockArraySessionStorage());
         $request = Request::create('/');
-        $request->setSession($session);
+        $request->setSession(new Session(new MockArraySessionStorage()));
+        $request->attributes->set(PlatformRequest::ATTRIBUTE_ROUTE_SCOPE, [$scope]);
         $stack = new RequestStack();
         $stack->push($request);
 
-        return new PendingUploadStore($stack);
+        return $stack;
     }
 
     private function ctx(): SalesChannelContext

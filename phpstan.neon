@@ -3,11 +3,44 @@ parameters:
     paths:
         - src
         - tests
+        - benchmarks
     excludePaths:
         - vendor
     bootstrapFiles:
         - vendor/autoload.php
     ignoreErrors:
+        # Die Skripte des Messprojekts sind Kommandozeilenwerkzeuge im Container der Instanz, kein Code
+        # der Erweiterung: Sie legen den Ordner für die Testfotos an und räumen ihre Arbeitskopie weg.
+        -
+            identifier: shopware.forbidLocalDiskWrite
+            path: benchmarks/*
+
+        # ---------------------------------------------------------------------------------
+        # Angekündigte Signatur-Änderungen in 6.8. Das sind keine Befunde am eigenen Code,
+        # sondern Vorankündigungen von Shopware — sie fallen mit der Anhebung auf 6.8 als
+        # Mindestversion von selbst weg. Einzeln aufgeführt und begründet, damit auffällt,
+        # wenn die Liste wächst; eine erzeugte Baseline liest niemand mehr.
+        #
+        # `reportUnmatched: false` tragen die Einträge, die nur bei einem Teil der unterstützten
+        # 6.7-Fassungen oder Fassungen der Prüfregeln anschlagen. Das Tor installiert jeweils die
+        # neuesten; seit 6.7.15.0 schweigen sie dort, unter älteren Fassungen erscheinen sie weiter.
+        # ---------------------------------------------------------------------------------
+
+        # `Context::scope()` bekommt einen **zusätzlichen optionalen** Parameter `$states`.
+        # Die Aufrufe bleiben unverändert richtig; es gibt nichts, worauf man migrieren
+        # könnte, ohne gegen die 6.7-Signatur zu verstoßen.
+        -
+            message: '#Call to deprecated method scope\(\) of class Shopware\\Core\\Framework\\Context#'
+            reportUnmatched: false
+
+        # `EntitySearchResult` bleibt bestehen, sie **erbt in 6.8 nur nicht mehr** von
+        # `EntityCollection`. Wer die Entitäten über `getEntities()` holt — und das tut dieses
+        # Plugin durchgehend —, merkt davon nichts. Betroffen wären nur Sammlungs-Methoden
+        # direkt am Suchergebnis; die gibt es hier nicht mehr.
+        -
+            message: '#(Call to method \w+\(\) of deprecated class|Instantiation of deprecated class|Return type of (anonymous function|method) [^ ]* ?has typehint with deprecated class) Shopware\\Core\\Framework\\DataAbstractionLayer\\Search\\EntitySearchResult#'
+            reportUnmatched: false
+
         # Shopware-6.8-Vorbereitung: `Field::addFlags()` bekommt in 6.8 einen
         # `static`-Return-Type. Der Aufruf in OrderAttachmentDefinition.php
         # ist unverändert korrekt — der Deprecation-Hinweis löst sich mit der
@@ -15,6 +48,7 @@ parameters:
         -
             message: '#Call to deprecated method addFlags\(\) of class Shopware\\Core\\Framework\\DataAbstractionLayer\\Field\\Field#'
             path: src/Core/Content/OrderAttachment/OrderAttachmentDefinition.php
+            reportUnmatched: false
 
         # `SystemConfigService::set()` trägt `reason:new-optional-parameter` — die
         # Methode bleibt, sie bekommt in 6.8 nur einen zusätzlichen optionalen
@@ -26,6 +60,51 @@ parameters:
         -
             message: '#Call to deprecated method set\(\) of class Shopware\\Core\\System\\SystemConfig\\SystemConfigService#'
             path: tests/Integration/ScheduledTask/*.php
+            reportUnmatched: false
+
+        # **Dieser Vorschlag würde die Bedingung umkehren.** Die Kennung steht in einem
+        # `NotFilter`: gesucht sind alle Sätze mit diesem Namen **außer** diesem einen. In den
+        # Criteria-Aufbau gegeben hieße das „genau dieser eine" — das Gegenteil.
+        -
+            message: '#Using "id" directly in EqualsFilter or EqualsAnyFilter is forbidden#'
+            path: src/Installer/CustomFieldInstaller.php
+            reportUnmatched: false
+
+        # Das Plugin verwaltet hochgeladene Anhänge — es **muss** an Dateien arbeiten. Die
+        # Metadaten werden über eine temporäre Datei entfernt und danach an ihren Platz gerückt.
+        -
+            message: '#Usage of (rename|unlink) is forbidden to local files#'
+            path: src/Service/Image/ExifStripper.php
+
+        # `php://output` ist keine lokale Datei, sondern der Ausgabestrom der Antwort. Die Regel
+        # sieht nur den Funktionsnamen.
+        -
+            message: '#Usage of fopen with write mode is forbidden to local files#'
+            path: src/Service/OrderAttachmentDownloadService.php
+
+        # Ohne fortlaufende Schlüssel wird aus dem Feld in der Antwort ein Objekt. Der Aufruf hält
+        # diese Ausgabeform fest, auch wenn die Typangabe sie zurzeit schon zusichert.
+        -
+            message: '#of array_values is already a list, call has no effect#'
+            path: src/Storefront/Controller/OrderAttachmentController.php
+
+        # Die Tests legen ihre Dateien in `sys_get_temp_dir()` an und räumen sie wieder ab — genau
+        # das, was die Regel verlangt. Sie sieht nur den Funktionsnamen, nicht das Ziel.
+        -
+            message: '#Usage of (mkdir|rmdir|unlink|rename|file_put_contents) is forbidden to local files#'
+            path: tests/*
+
+        # Der Konstruktor ist als überflüssig gekennzeichnet, weil er nichts tut. Eine Definition
+        # lässt sich aber nur über ihn erzeugen; mit seinem Wegfall in 6.8 läuft der Aufruf weiter.
+        -
+            message: '#Call to deprecated method __construct\(\) of class Shopware\\Core\\Framework\\DataAbstractionLayer\\EntityDefinition#'
+            path: tests/Unit/Core/Content/OrderAttachment/OrderAttachmentDefinitionTest.php
+
+        # In Tests gibt es keinen Aufrufer. Ein aufgebauter Nutzerkontext täuschte dort eine
+        # Abhängigkeit vor, die der Test gar nicht hat.
+        -
+            message: '#Do not use Shopware\\Core\\Framework\\Context::createDefaultContext#'
+            path: tests/*
 
     banned_code:
         nodes:
@@ -60,6 +139,7 @@ parameters:
         non_ignorable: true
 
 includes:
+    - vendor/shopwarelabs/phpstan-shopware/rules.neon
     - vendor/ekino/phpstan-banned-code/extension.neon
     - vendor/phpstan/phpstan-strict-rules/rules.neon
     - vendor/phpstan/phpstan-deprecation-rules/rules.neon

@@ -18,30 +18,19 @@ use Symfony\Contracts\Service\ResetInterface;
 use Throwable;
 
 /**
- * Verknüpft die Pending-Uploads aus der Session mit der/den gerade angelegten
- * Order(s).
+ * Verknüpft die vorgemerkten Uploads aus der Sitzung mit der gerade angelegten Bestellung oder,
+ * bei einem geteilten Warenkorb, mit jeder Teilbestellung.
  *
- * Multi-Order-Kompatibilität (RcCartSplitter):
- *   - `CheckoutOrderPlacedEvent` wird bei Cart-Split mehrfach gefeuert (eine
- *     Bestellung pro Teil-Order). Damit jede Teil-Order dieselben Anhänge
- *     erhält, wird die Pending-Liste beim ERSTEN Aufruf in eine Instance-Property
- *     gesnapshottet und bei jedem nachfolgenden Aufruf gegen die Snapshot-Liste
- *     verlinkt.
+ * Teilt ein Plugin wie RcCartSplitter den Warenkorb, löst Shopware `CheckoutOrderPlacedEvent`
+ * einmal je Teilbestellung aus. Damit jede dieselben Anhänge bekommt, hält der Subscriber die
+ * Liste beim ersten Aufruf in einer Eigenschaft fest und verknüpft bei jedem weiteren Aufruf
+ * derselben Anfrage gegen diese Kopie. Die Priorität -500 lässt ihn nach den Subscribern laufen,
+ * die den Warenkorb aufteilen.
  *
- *   - Priority -500 stellt sicher, dass das Anhängen NACH dem Cart-Splitter
- *     läuft — so bestimmt es das Ruhrcoder-Plugin-Interaktionsprotokoll für Order-Subscriber.
- *
- *   - Geleert wird der PendingUploadStore erst auf `CheckoutFinishPageLoadedEvent`
- *     — also nach Ende des kompletten Order-Placement-Pfads.
- *
- * Worker-Mode-Sicherheit:
- *   Der Snapshot lebt als Instance-Property. Bei klassischem PHP-FPM wird der
- *   Service pro Request neu instanziiert — kein Leak. Bei Worker-Mode-Setups
- *   (Symfony-Runtime mit Swoole, RoadRunner, FrankenPHP) bleibt der Singleton
- *   zwischen Requests bestehen. Die Implementierung von {@see ResetInterface}
- *   sorgt dafür, dass der DI-Container am Ende jedes Requests `reset()` aufruft
- *   und der Snapshot garantiert pro Customer-Request neu beginnt — kein
- *   Cross-Customer-Datenleck.
+ * Die Kopie lebt in der Instanz. Unter PHP-FPM entsteht der Dienst je Anfrage neu; in einem
+ * Worker-Betrieb (Swoole, RoadRunner, FrankenPHP) bleibt er zwischen Anfragen bestehen. Über
+ * {@see ResetInterface} ruft der Container am Ende jeder Anfrage `reset()` auf, sodass die Kopie
+ * nie in die Anfrage eines anderen Kunden hinüberreicht.
  */
 final class CheckoutOrderPlacedSubscriber implements EventSubscriberInterface, ResetInterface
 {
@@ -69,6 +58,7 @@ final class CheckoutOrderPlacedSubscriber implements EventSubscriberInterface, R
     public static function getSubscribedEvents(): array
     {
         return [
+            // -500: nach den Subscribern, die den Warenkorb in Teilbestellungen aufteilen.
             CheckoutOrderPlacedEvent::class => ['onOrderPlaced', -500],
             CheckoutFinishPageLoadedEvent::class => ['onFinishPageLoaded', 0],
         ];
@@ -100,22 +90,17 @@ final class CheckoutOrderPlacedSubscriber implements EventSubscriberInterface, R
             }
         }
 
-        // Die Session-Liste JETZT leeren — im selben Request, in dem die Dateien den
-        // Besitzer wechseln. Der Snapshot lebt im Arbeitsspeicher weiter und versorgt
-        // weitere Teil-Orders desselben Requests (Cart-Split), das Leeren ist also
-        // gefahrlos.
+        // Die Liste in der Sitzung wird in derselben Anfrage geleert, in der die Dateien zur
+        // Bestellung wandern. Weitere Teilbestellungen dieser Anfrage versorgt die Kopie im
+        // Arbeitsspeicher.
         //
-        // In `onFinishPageLoaded()` geschähe es nie: Order-Placement (`POST /checkout/order`)
-        // und Finish-Page (`GET /checkout/finish`) sind zwei getrennte Requests. Ein
-        // `snapshotTaken`-Guard wäre im zweiten Request immer `false`, weil der Service pro
-        // Request neu gebaut (PHP-FPM) bzw. per `kernel.reset` zurückgesetzt wird (Worker-Mode).
-        //
-        // Die Folgen wären gravierend: Die Datei bliebe als „pending" in der Session, die
-        // Confirm-Page des nächsten Warenkorbs zeigte sie samt gültigem Remove-Token.
-        // Ein Klick auf „Entfernen" löschte das Media, und weil der Fremdschlüssel
-        // `fk.rc_order_attachment.media_id` auf `ON DELETE CASCADE` steht, risse er den
-        // Anhang der bereits abgeschlossenen Bestellung mit. Ohne Entfernen würde
-        // dieselbe Datei bei der nächsten Bestellung erneut angehängt und verschickt.
+        // Später wäre zu spät: Bestellabschluss (`POST /checkout/order`) und Abschlussseite
+        // (`GET /checkout/finish`) sind zwei Anfragen, und die Abschlussseite wird nicht immer
+        // erreicht. Bliebe die Datei vorgemerkt, zeigte die Bestätigungsseite des nächsten
+        // Warenkorbs sie samt gültigem Token zum Entfernen. Ein Klick darauf löschte das Medium,
+        // und der kaskadierende Fremdschlüssel `fk.rc_order_attachment.media_id` nähme den
+        // Anhang der abgeschlossenen Bestellung mit. Ohne Klick hinge dieselbe Datei an der
+        // nächsten Bestellung.
         $this->pendingUploadStore->clear();
 
         $this->logger->info('rc_order_attachment.order_placed', [
@@ -124,9 +109,9 @@ final class CheckoutOrderPlacedSubscriber implements EventSubscriberInterface, R
             'attached' => $attached,
         ]);
 
-        // Konnten Uploads nicht verknüpft werden (z. B. transienter DB-Fehler),
-        // wären sie sonst still für die Bestellung verloren. Das Media existiert
-        // bereits — ein idempotenter Retry über die Queue holt das Verknüpfen nach.
+        // Scheitert das Verknüpfen, etwa an einem vorübergehenden Datenbankfehler, gingen die
+        // Dateien für die Bestellung still verloren. Die Medien existieren schon, also holt ein
+        // Wiederholversuch über die Warteschlange das Verknüpfen nach.
         if ($failed !== []) {
             $this->messageBus->dispatch(new RetryOrderAttachmentLinkMessage($orderId, $failed));
             $this->logger->warning('rc_order_attachment.order_placed.link_retry_scheduled', [
@@ -138,9 +123,9 @@ final class CheckoutOrderPlacedSubscriber implements EventSubscriberInterface, R
 
     public function onFinishPageLoaded(CheckoutFinishPageLoadedEvent $event): void
     {
-        // Sicherheitsnetz für Pfade, die die Finish-Page ohne vorheriges
-        // `checkout.order.placed` erreichen (z. B. Rückkehr nach externem
-        // Zahlungsanbieter). `clear()` ist idempotent.
+        // Rückfall für Wege, die die Abschlussseite ohne vorheriges `checkout.order.placed` in
+        // dieser Sitzung erreichen, etwa nach der Rückkehr von einem externen Zahlungsanbieter.
+        // Ein zweites `clear()` schadet nicht.
         $this->pendingUploadStore->clear();
         $this->snapshot = [];
         $this->snapshotTaken = false;

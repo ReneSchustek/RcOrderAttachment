@@ -69,8 +69,8 @@
             <name>stripExifFromImages</name>
             <label lang="de-DE">EXIF-Metadaten aus Bildern entfernen</label>
             <label lang="en-GB">Strip EXIF metadata from images</label>
-            <helpText lang="de-DE">Entfernt EXIF-Metadaten (GPS-Koordinaten, Geräte-Info, Aufnahmezeit) aus JPEG/PNG/WebP/HEIC vor der Speicherung. DSGVO-relevant — Smartphone-Fotos enthalten standardmäßig GPS-Daten des Customers. Standard: aktiv. Setzt installierte GD- oder Imagick-Erweiterung voraus.</helpText>
-            <helpText lang="en-GB">Removes EXIF metadata (GPS coordinates, device info, capture time) from JPEG/PNG/WebP/HEIC before storage. GDPR-relevant — smartphone photos contain GPS data by default. Default: enabled. Requires installed GD or Imagick extension.</helpText>
+            <helpText lang="de-DE">Entfernt EXIF-Metadaten (GPS-Koordinaten, Geräte-Info, Aufnahmezeit) aus JPEG, PNG und WebP vor der Speicherung; die Ausrichtung eines Hochkantfotos wird dabei ins Bild übernommen. DSGVO-relevant: Smartphone-Fotos enthalten standardmäßig den Aufnahmeort. HEIC-Fotos bleiben unverändert, weil GD sie nicht lesen kann. Standard: aktiv. Setzt die GD-Erweiterung voraus.</helpText>
+            <helpText lang="en-GB">Removes EXIF metadata (GPS coordinates, device info, capture time) from JPEG, PNG and WebP before storage; the orientation of a portrait photo is applied to the image itself. GDPR-relevant: smartphone photos contain the capture location by default. HEIC photos stay unchanged because GD cannot read them. Default: enabled. Requires the GD extension.</helpText>
             <defaultValue>true</defaultValue>
         </input-field>
 
@@ -102,7 +102,7 @@
             <label lang="de-DE">Bestell-Anhänge löschen nach (Tagen, 0 = nie)</label>
             <label lang="en-GB">Delete order attachments after (days, 0 = never)</label>
             <helpText lang="de-DE">Anhänge werden nach dieser Frist automatisch gelöscht, gerechnet ab dem Upload und <b>unabhängig vom Bestellstatus</b> (DSGVO-Datensparsamkeit). 0 deaktiviert die automatische Löschung.</helpText>
-            <helpText lang="en-GB">Attachments of completed orders are automatically deleted after this period (GDPR retention). 0 disables automatic deletion.</helpText>
+            <helpText lang="en-GB">Attachments are automatically deleted after this period, counted from the upload and <b>regardless of the order status</b> (GDPR data minimisation). 0 disables automatic deletion.</helpText>
             <defaultValue>180</defaultValue>
         </input-field>
     </card>

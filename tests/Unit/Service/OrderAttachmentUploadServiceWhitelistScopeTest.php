@@ -37,16 +37,13 @@ use Symfony\Component\HttpFoundation\Session\Session;
 use Symfony\Component\HttpFoundation\Session\Storage\MockArraySessionStorage;
 
 /**
- * Pinnt den Lebenszyklus des Herkunfts-Markers {@see OrderAttachmentUploadScope}.
+ * Hält den Lebenszyklus der Herkunftsmarke {@see OrderAttachmentUploadScope} fest, an der allein
+ * der {@see \Ruhrcoder\RcOrderAttachment\Service\Subscriber\MediaWhitelistSubscriber} einen
+ * Upload des Plugins erkennt.
  *
- * Der Marker ist die einzige Information, an der der
- * {@see \Ruhrcoder\RcOrderAttachment\Service\Subscriber\MediaWhitelistSubscriber}
- * einen Plugin-Upload erkennt. Zwei Eigenschaften müssen gelten und sind beide
- * still brechbar:
- *
- * - Fehlt er beim Schreiben, lehnt der Core-Validator konfigurierte Sonder-Endungen ab.
- * - Bleibt er danach stehen, erbt jeder weitere Media-Upload desselben Requests die
- *   Plugin-Endungen — die shopweite Ausweitung wäre zurück.
+ * Beide Fehler blieben still: Fehlt die Marke beim Schreiben, lehnt der Validator des Kerns die
+ * eingestellten zusätzlichen Endungen ab. Bleibt sie danach stehen, erbt jeder weitere Upload
+ * derselben Anfrage die Endungen des Plugins, und die Freigabe gälte wieder shopweit.
  */
 final class OrderAttachmentUploadServiceWhitelistScopeTest extends TestCase
 {
@@ -66,20 +63,19 @@ final class OrderAttachmentUploadServiceWhitelistScopeTest extends TestCase
     }
 
     /**
-     * Was: Ein regulärer Upload.
-     * Warum: Der Marker muss genau während des Media-Schreibens am Context hängen
-     *        und danach wieder weg sein.
-     * Erwartet: Während `saveMediaFile` gesetzt, nach `upload()` nicht mehr.
+     * Die Marke hängt genau während `saveMediaFile()` am Kontext und ist nach `upload()` weg.
      */
     public function testMarksContextForTheMediaWriteAndCleansUpAfterwards(): void
     {
         $context = Context::createDefaultContext();
         $markedDuringWrite = null;
+        $extensionsDuringWrite = null;
 
-        $service = $this->service($this->mediaServiceRecording($markedDuringWrite));
+        $service = $this->service($this->mediaServiceRecording($markedDuringWrite, $extensionsDuringWrite));
         $service->upload($this->pdfFile(), $this->config(), $context);
 
         self::assertTrue($markedDuringWrite, 'Ohne Marker lehnt der Core-Validator konfigurierte Endungen ab');
+        self::assertSame(['pdf'], $extensionsDuringWrite, 'Der Marker trägt die Endungen des Kanals, mit denen geprüft wurde');
         self::assertFalse(
             $context->hasExtension(OrderAttachmentUploadScope::NAME),
             'Der Marker darf den Speicheraufruf nicht überleben — sonst erbt jeder weitere Upload des Requests die Plugin-Endungen',
@@ -87,10 +83,8 @@ final class OrderAttachmentUploadServiceWhitelistScopeTest extends TestCase
     }
 
     /**
-     * Was: Das Media-Schreiben scheitert (Storage weg, Validator lehnt ab).
-     * Warum: Der Aufräum-Pfad ist der stillere von beiden. Ohne `finally` bliebe der
-     *        Marker nach jedem Fehlschlag am Context des Requests hängen.
-     * Erwartet: Exception kommt durch, Marker ist trotzdem entfernt.
+     * Der Fehlerweg ist der stillere: Ohne `finally` bliebe die Marke nach jedem gescheiterten
+     * Schreiben am Kontext der Anfrage hängen. Die Ausnahme selbst kommt durch.
      */
     public function testMarkerIsRemovedWhenTheMediaWriteFails(): void
     {
@@ -105,7 +99,7 @@ final class OrderAttachmentUploadServiceWhitelistScopeTest extends TestCase
             $service->upload($this->pdfFile(), $this->config(), $context);
             self::fail('Der Fehlschlag muss durchschlagen');
         } catch (RuntimeException) {
-            // erwartet — geprüft wird der Zustand danach
+            // Die Ausnahme ist erwartet, geprüft wird der Zustand danach.
         }
 
         self::assertFalse(
@@ -115,9 +109,12 @@ final class OrderAttachmentUploadServiceWhitelistScopeTest extends TestCase
     }
 
     /**
-     * MediaService-Mock, der festhält, ob der Marker beim Schreiben gesetzt war.
+     * Hält fest, ob die Marke beim Schreiben am Kontext hing.
      */
-    private function mediaServiceRecording(?bool &$markedDuringWrite): MediaService
+    /**
+     * @param list<string>|null $extensionsDuringWrite
+     */
+    private function mediaServiceRecording(?bool &$markedDuringWrite, ?array &$extensionsDuringWrite = null): MediaService
     {
         $mediaService = $this->createMock(MediaService::class);
         $mediaService->method('saveMediaFile')->willReturnCallback(
@@ -128,8 +125,10 @@ final class OrderAttachmentUploadServiceWhitelistScopeTest extends TestCase
                 ?string $folder = null,
                 ?string $mediaId = null,
                 bool $private = true,
-            ) use (&$markedDuringWrite): string {
+            ) use (&$markedDuringWrite, &$extensionsDuringWrite): string {
                 $markedDuringWrite = $writeContext->hasExtension(OrderAttachmentUploadScope::NAME);
+                $scope = $writeContext->getExtension(OrderAttachmentUploadScope::NAME);
+                $extensionsDuringWrite = $scope instanceof OrderAttachmentUploadScope ? $scope->allowedExtensions : null;
 
                 return $mediaId ?? Uuid::randomHex();
             },
@@ -168,8 +167,8 @@ final class OrderAttachmentUploadServiceWhitelistScopeTest extends TestCase
     }
 
     /**
-     * Repository, das den Plugin-Media-Folder als vorhanden meldet — sonst legt der
-     * Installer ihn an, was für diesen Test nichts beiträgt.
+     * Meldet den Medienordner des Plugins als vorhanden, sonst legte der Installer ihn an, was
+     * hier nichts beiträgt.
      *
      * @return EntityRepository<MediaFolderCollection>
      */

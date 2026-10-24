@@ -8,13 +8,11 @@ use Ruhrcoder\RcOrderAttachment\Service\Config\PluginConfig;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 /**
- * Vergleicht die Datei-Größe gegen das konfigurierte `maxFileSizeKb`. PHP-Limits
- * (`upload_max_filesize`, `post_max_size`) gelten zusätzlich und werden vorher
- * vom Webserver/PHP enforced — dieser Validator deckt das Plugin-Limit ab.
+ * Vergleicht die Dateigröße mit `maxFileSizeKb`. Die Grenzen von PHP (`upload_max_filesize`,
+ * `post_max_size`) gelten zusätzlich und greifen schon vorher.
  *
- * `$file->getSize() === false` deutet auf einen abgebrochenen Upload — derselbe
- * Reject wie bei leerer Datei (`EMPTY_UPLOAD`), damit der Customer eine klare
- * Fehlermeldung statt einer technischen Diagnose bekommt.
+ * Liefert `getSize()` den Wert `false`, ist der Upload meist abgebrochen. Er bekommt denselben
+ * Code wie eine leere Datei (`EMPTY_UPLOAD`), damit der Kunde eine verständliche Meldung sieht.
  */
 final class FileSizeValidator
 {

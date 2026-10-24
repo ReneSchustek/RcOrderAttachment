@@ -8,10 +8,11 @@ use Shopware\Core\Framework\HttpException;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * 400 für Programmier- oder Konfigurationsfehler im Aufrufpfad (z. B. fehlende
- * UUID, negativer Wert). Wird im Storefront-Pfad nicht für Customer-Fehler
- * benutzt — Customer-Fehler laufen über {@see AttachmentUploadException}
- * (422 mit Validierungs-Codes).
+ * 400 für Programmier- oder Konfigurationsfehler im Aufrufpfad, etwa eine ungültige UUID oder
+ * eine negative Größe.
+ *
+ * Für Fehler, die der Kunde selbst beheben kann, gibt es {@see AttachmentUploadException} mit
+ * 422 und Prüfcodes. Einzige Ausnahme ist ein Dateiname, der nach der Bereinigung leer ist.
  */
 final class InvalidAttachmentPayloadException extends HttpException
 {

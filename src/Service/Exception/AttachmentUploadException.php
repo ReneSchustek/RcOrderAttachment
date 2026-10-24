@@ -9,9 +9,10 @@ use Shopware\Core\Framework\HttpException;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Wird vom Upload-Service geworfen, sobald die Validierungs-Pipeline mindestens
- * einen Reject geliefert hat. Die Reject-Codes werden 1:1 in die JSON-Antwort
- * des Storefront-Controllers übernommen.
+ * Ablehnung eines Uploads, sobald die Prüfkette mindestens einen Befund geliefert hat.
+ *
+ * Die Codes gehen unverändert in die JSON-Antwort des Storefront-Controllers, und das Skript
+ * im Browser sucht zu jedem Code den passenden Text.
  */
 final class AttachmentUploadException extends HttpException
 {

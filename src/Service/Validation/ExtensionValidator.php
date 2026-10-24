@@ -8,10 +8,10 @@ use Ruhrcoder\RcOrderAttachment\Service\Config\PluginConfig;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 /**
- * Prüft die Datei-Endung gegen die in der Plugin-Konfiguration definierte Whitelist.
+ * Prüft die Endung gegen die Liste erlaubter Endungen aus der Plugin-Konfiguration.
  *
- * Die Endung wird strikt aus dem Original-Filename des Uploads abgeleitet —
- * der MIME-Typ aus dem Browser ist client-kontrolliert und nicht vertrauenswürdig.
+ * Die Endung kommt aus dem ursprünglichen Dateinamen. Den MIME-Typ, den der Browser mitschickt,
+ * bestimmt der Absender selbst; ihn prüft erst {@see MimeTypeValidator} über die erkannte Art.
  */
 final class ExtensionValidator
 {

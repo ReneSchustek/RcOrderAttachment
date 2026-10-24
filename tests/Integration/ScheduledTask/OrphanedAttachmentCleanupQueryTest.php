@@ -14,23 +14,18 @@ use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\Uuid\Uuid;
 
 /**
- * Prüft die **Auswahl-Abfrage** des Orphan-Cleanups an echten Daten.
+ * Prüft die Auswahlabfrage der Waisenbereinigung an einer echten Datenbank. Der Handler löscht
+ * private Kundenuploads, und welche Zeilen seine Abfrage liefert, kann ein Unit-Test mit Mock
+ * nicht zeigen, weil der Mock zurückgibt, was der Test vorgibt.
  *
- * Der Handler löscht private Kunden-Uploads. Die Unit-Tests decken ab, was er mit einem Ergebnis
- * tut; welche Zeilen seine Abfrage liefert, konnten sie nicht prüfen — ein Mock gibt zurück, was
- * der Test vorgibt. Genau das holt dieser Test nach.
- *
- * Die Abfrage hat drei Bedingungen, und jede einzelne trägt Verantwortung:
- *
- *   media_folder_id = <Plugin-Ordner>   → fremde Medien bleiben unangetastet
- *   created_at      < cutoff            → laufende Uploads bleiben unangetastet
- *   a.id IS NULL    (LEFT JOIN)         → an Bestellungen gebundene Dateien bleiben unangetastet
- *
- * Fiele eine davon aus, würde der Handler Dateien löschen, die jemandem gehören.
+ * Jede der drei Bedingungen schützt fremdes Eigentum: `media_folder_id` die übrigen Medien des
+ * Shops, `created_at < cutoff` laufende Uploads und `a.id IS NULL` aus dem LEFT JOIN die an
+ * Bestellungen gebundenen Dateien. Fällt eine weg, löscht der Handler Dateien, die jemandem gehören.
  */
 final class OrphanedAttachmentCleanupQueryTest extends IntegrationTestCase
 {
-    private const AUFBEWAHRUNG_STUNDEN = 24;
+    // Vorgabe aus config.xml; die Grenzfälle mit 23 und 25 Stunden liegen beiderseits.
+    private const RETENTION_HOURS = 24;
 
     private Connection $connection;
 
@@ -39,7 +34,7 @@ final class OrphanedAttachmentCleanupQueryTest extends IntegrationTestCase
 
     private OrphanedAttachmentCleanupTaskHandler $handler;
 
-    private string $pluginOrdnerId;
+    private string $pluginFolderId;
 
     protected function setUp(): void
     {
@@ -51,148 +46,129 @@ final class OrphanedAttachmentCleanupQueryTest extends IntegrationTestCase
         $this->handler = static::service(OrphanedAttachmentCleanupTaskHandler::class);
 
         static::systemConfig()
-            ->set('RcOrderAttachment.config.orphanRetentionHours', self::AUFBEWAHRUNG_STUNDEN);
+            ->set('RcOrderAttachment.config.orphanRetentionHours', self::RETENTION_HOURS);
 
         $installer = static::service(MediaFolderInstaller::class);
-        $ordnerId = $installer->findFolderId($this->context) ?? $installer->ensureFolder($this->context);
-        $this->pluginOrdnerId = $ordnerId;
+        $folderId = $installer->findFolderId($this->context) ?? $installer->ensureFolder($this->context);
+        $this->pluginFolderId = $folderId;
     }
 
     /**
-     * Was: Eine verwaiste Datei im Plugin-Ordner, älter als die Aufbewahrungsfrist.
-     * Warum: Der Fall, für den der Handler gebaut ist — ein Upload, den niemand bestellt hat.
-     * Erwartet: gelöscht.
+     * Der Fall, für den der Handler da ist: ein Upload, aus dem nie eine Bestellung wurde.
      */
     public function testDeletesOrphanOlderThanRetention(): void
     {
-        $verwaist = $this->medium($this->pluginOrdnerId, '-25 hours');
+        $orphaned = $this->media($this->pluginFolderId, '-25 hours');
 
         $this->handler->run();
 
-        self::assertFalse($this->existiert($verwaist), 'ein echter Waise muss verschwinden');
+        self::assertFalse($this->exists($orphaned), 'ein echter Waise muss verschwinden');
     }
 
     /**
-     * Was: Eine Datei im Plugin-Ordner, an die eine Bestellung gebunden ist — obwohl sie alt ist.
-     * Warum: **Der wichtigste Test dieser Datei.** Fiele der LEFT-JOIN weg, löschte der Handler
-     *        die Anhänge abgeschlossener Bestellungen. Der Kunde hätte hochgeladen, der Betrieb
-     *        hätte nichts mehr.
-     * Erwartet: bleibt.
+     * Der wichtigste Fall der Klasse: Fiele der LEFT JOIN weg, löschte der Handler die Anhänge
+     * abgeschlossener Bestellungen, und der Betrieb stünde ohne die hochgeladene Datei da.
      */
     public function testKeepsMediaReferencedByAnAttachment(): void
     {
-        $gebunden = $this->medium($this->pluginOrdnerId, '-25 hours');
-        $this->anhangAnlegen($gebunden, '-25 hours');
+        $bound = $this->media($this->pluginFolderId, '-25 hours');
+        $this->createAttachment($bound, '-25 hours');
 
         $this->handler->run();
 
         self::assertTrue(
-            $this->existiert($gebunden),
+            $this->exists($bound),
             'an eine Bestellung gebundene Dateien dürfen der Waisen-Suche nie ins Netz gehen',
         );
     }
 
     /**
-     * Was: Eine Datei, die jünger ist als die Frist.
-     * Warum: Zwischen Upload auf der Bestätigungsseite und dem Absenden der Bestellung liegt Zeit.
-     *        Griffe der Handler zu früh, verschwände die Datei aus dem laufenden Bestellvorgang.
-     * Erwartet: bleibt.
+     * Zwischen dem Upload auf der Bestätigungsseite und dem Absenden der Bestellung liegt Zeit.
+     * Griffe der Handler zu früh, verschwände die Datei aus dem laufenden Bestellvorgang.
      */
     public function testKeepsMediaYoungerThanRetention(): void
     {
-        $frisch = $this->medium($this->pluginOrdnerId, '-1 hour');
+        $fresh = $this->media($this->pluginFolderId, '-1 hour');
 
         $this->handler->run();
 
-        self::assertTrue($this->existiert($frisch), 'ein laufender Upload darf nicht abgeräumt werden');
+        self::assertTrue($this->exists($fresh), 'ein laufender Upload darf nicht abgeräumt werden');
     }
 
     /**
-     * Was: Die Grenze selbst — eine Datei knapp diesseits, eine knapp jenseits der Frist.
-     * Warum: Ein Fehler um eine Stunde ist in der Abfrage unsichtbar und im Betrieb teuer. Nur der
-     *        beidseitige Test nagelt fest, wo geschnitten wird.
-     * Erwartet: die ältere weg, die jüngere bleibt.
+     * Ein Fehler um eine Stunde ist in der Abfrage unsichtbar und im Betrieb teuer. Erst eine
+     * Datei auf jeder Seite der Frist legt fest, wo geschnitten wird.
      */
     public function testCutoffCutsOnTheRightSide(): void
     {
-        $knappDrueber = $this->medium($this->pluginOrdnerId, '-25 hours');
-        $knappDrunter = $this->medium($this->pluginOrdnerId, '-23 hours');
+        $justAbove = $this->media($this->pluginFolderId, '-25 hours');
+        $justBelow = $this->media($this->pluginFolderId, '-23 hours');
 
         $this->handler->run();
 
-        self::assertFalse($this->existiert($knappDrueber), 'älter als 24 h muss weg');
-        self::assertTrue($this->existiert($knappDrunter), 'jünger als 24 h muss bleiben');
+        self::assertFalse($this->exists($justAbove), 'älter als 24 h muss weg');
+        self::assertTrue($this->exists($justBelow), 'jünger als 24 h muss bleiben');
     }
 
     /**
-     * Was: Eine alte, unreferenzierte Datei in einem **fremden** Ordner.
-     * Warum: Der Ordner-Filter ist die Grenze zwischen „unsere Dateien" und dem restlichen
-     *        Medienbestand des Shops. Ohne ihn räumte das Plugin fremde Medien ab — Produktbilder,
-     *        Theme-Dateien, Dokumente.
-     * Erwartet: bleibt.
+     * Der Ordnerfilter trennt die Uploads des Plugins vom übrigen Medienbestand des Shops. Ohne
+     * ihn räumte der Handler jedes alte, unverknüpfte Medium ab, auch Produktbilder und Dokumente.
      */
     public function testNeverTouchesMediaOutsideThePluginFolder(): void
     {
-        $fremd = $this->medium(null, '-25 hours');
+        $foreign = $this->media(null, '-25 hours');
 
         $this->handler->run();
 
-        self::assertTrue($this->existiert($fremd), 'ausserhalb des Plugin-Ordners hat der Handler nichts zu suchen');
+        self::assertTrue($this->exists($foreign), 'ausserhalb des Plugin-Ordners hat der Handler nichts zu suchen');
     }
 
     /**
-     * Was: Aufbewahrung auf 0 gestellt — der aggressivste Wert, den die Oberfläche zulässt.
-     * Warum: Anders als bei der Anhang-Aufbewahrung (0 = nie löschen) lässt sich die Waisen-Frist
-     *        **nicht abschalten**: `PluginConfigProvider` hebt sie mit `max(1, …)` auf eine Stunde
-     *        an. Das ist die Schutzschwelle für laufende Bestellvorgänge — ohne sie löschte der
-     *        nächste Lauf eine Datei, die der Kunde gerade hochgeladen hat. Fällt das `max(1, …)`
-     *        weg, fällt dieser Test.
-     * Erwartet: Alte Waisen verschwinden, eine Datei aus der laufenden Stunde bleibt.
+     * Anders als bei der Anhangsaufbewahrung bedeutet 0 hier nicht „aus": `PluginConfigProvider`
+     * hebt die Waisenfrist mit `max(1, …)` auf eine Stunde an. Ohne diese Untergrenze löschte der
+     * nächste Lauf eine Datei, die der Kunde gerade hochgeladen hat.
      */
     public function testRetentionIsClampedToAtLeastOneHour(): void
     {
         static::systemConfig()
             ->set('RcOrderAttachment.config.orphanRetentionHours', 0);
 
-        $alt = $this->medium($this->pluginOrdnerId, '-100 hours');
-        $geradeEben = $this->medium($this->pluginOrdnerId, '-0 hours');
+        $old = $this->media($this->pluginFolderId, '-100 hours');
+        $justNow = $this->media($this->pluginFolderId, '-0 hours');
 
         $this->handler->run();
 
-        self::assertFalse($this->existiert($alt), 'alte Waisen werden auch bei 0 abgeräumt');
+        self::assertFalse($this->exists($old), 'alte Waisen werden auch bei 0 abgeräumt');
         self::assertTrue(
-            $this->existiert($geradeEben),
+            $this->exists($justNow),
             'die Untergrenze von einer Stunde schützt den laufenden Upload',
         );
     }
 
-    // --- Hilfen ---------------------------------------------------------
-
     /**
-     * Legt ein privates Medium an und datiert es per SQL zurück — die DAL setzt `created_at`
-     * selbst und kennt keine Vergangenheit.
+     * Legt ein privates Medium an und datiert es per SQL zurück, weil die DAL `created_at`
+     * beim Anlegen selbst auf jetzt setzt.
      */
-    private function medium(?string $ordnerId, string $alter): string
+    private function media(?string $folderId, string $age): string
     {
         $id = Uuid::randomHex();
-        $daten = ['id' => $id, 'private' => true];
-        if ($ordnerId !== null) {
-            $daten['mediaFolderId'] = $ordnerId;
+        $data = ['id' => $id, 'private' => true];
+        if ($folderId !== null) {
+            $data['mediaFolderId'] = $folderId;
         }
-        $this->mediaRepository->create([$daten], $this->context);
+        $this->mediaRepository->create([$data], $this->context);
 
         $this->connection->executeStatement(
             'UPDATE `media` SET created_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL :versatz HOUR) WHERE id = :id',
-            ['versatz' => $this->stunden($alter), 'id' => Uuid::fromHexToBytes($id)],
+            ['versatz' => $this->hours($age), 'id' => Uuid::fromHexToBytes($id)],
         );
 
         return $id;
     }
 
-    private function anhangAnlegen(string $mediaId, string $alter): string
+    private function createAttachment(string $mediaId, string $age): string
     {
-        // Echte Bestellung: Der Fremdschlüssel auf `order` lässt nichts anderes zu — und ein
-        // Anhang ohne Bestellung wäre ohnehin genau der Waise, den dieser Test NICHT prüfen will.
+        // Der Fremdschlüssel auf `order` verlangt eine echte Bestellung.
         $orderId = $this->createTestOrder();
 
         $id = Uuid::randomHex();
@@ -204,13 +180,13 @@ final class OrphanedAttachmentCleanupQueryTest extends IntegrationTestCase
             'original_file_name' => 'gebunden.pdf',
             'mime_type' => 'application/pdf',
             'file_size' => 1234,
-            'created_at' => (new DateTimeImmutable($alter))->format('Y-m-d H:i:s.v'),
+            'created_at' => (new DateTimeImmutable($age))->format('Y-m-d H:i:s.v'),
         ]);
 
         return $id;
     }
 
-    private function existiert(string $mediaId): bool
+    private function exists(string $mediaId): bool
     {
         return (bool) $this->connection->fetchOne(
             'SELECT 1 FROM `media` WHERE id = :id',
@@ -218,10 +194,10 @@ final class OrphanedAttachmentCleanupQueryTest extends IntegrationTestCase
         );
     }
 
-    private function stunden(string $alter): int
+    private function hours(string $age): int
     {
-        preg_match('/-?(\d+)\s*hour/', $alter, $treffer);
+        preg_match('/-?(\d+)\s*hour/', $age, $match);
 
-        return -1 * (int) ($treffer[1] ?? 0);
+        return -1 * (int) ($match[1] ?? 0);
     }
 }

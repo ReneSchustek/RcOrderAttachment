@@ -7,20 +7,19 @@ namespace Ruhrcoder\RcOrderAttachment\Service\Validation;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 /**
- * Hart kodierte Blacklist gefährlicher Datei-Endungen. Greift selbst dann,
- * wenn ein Admin versehentlich `.php` in die Whitelist eintragen würde —
- * dieser Validator hat das letzte Wort.
+ * Feste Sperrliste gefährlicher Endungen und MIME-Typen, die auch dann greift, wenn jemand in der
+ * Verwaltung versehentlich `php` freigibt. Gegen die erlaubte Endungsliste behält sie das letzte Wort.
  *
- * Ergänzend wird der Anfang der Datei auf typische Script-Marker geprüft
- * (zur Verteidigung gegen "polyglot files" mit zulässiger Endung).
+ * Zusätzlich sucht sie am Dateianfang nach Skriptkennungen, um Dateien abzufangen, die unter
+ * einer zulässigen Endung zugleich als Skript taugen.
  */
 final class DangerousContentValidator
 {
     /**
-     * Öffentlich, damit die Config-Bereinigung ({@see \Ruhrcoder\RcOrderAttachment\Service\Config\PluginConfigProvider})
-     * dieselbe Blacklist an der Quelle anwenden kann — sonst könnte eine
-     * admin-konfigurierte Endung über den `MediaWhitelistSubscriber` in die
-     * Core-Media-Whitelist gelangen, ohne je diesen Validator zu durchlaufen.
+     * Öffentlich, damit {@see \Ruhrcoder\RcOrderAttachment\Service\Config\PluginConfigProvider}
+     * dieselbe Liste schon beim Lesen der Konfiguration anwendet. Sonst gelangte eine in der
+     * Verwaltung eingetragene Endung über den `MediaWhitelistSubscriber` in die Endungsliste des
+     * Kerns, ohne je diesen Prüfer zu durchlaufen.
      *
      * @var list<string>
      */
@@ -115,6 +114,9 @@ final class DangerousContentValidator
             return false;
         }
 
+        // Die ersten 2 KiB fangen Kennungen am Dateianfang. Ein Skript weiter hinten bleibt
+        // unentdeckt; ein größeres Fenster erhöht dafür die Gefahr, dass Binärdaten zufällig eine
+        // der kurzen Kennungen wie `<?=` oder `#!/` enthalten.
         $head = (string) fread($handle, 2048);
         fclose($handle);
 

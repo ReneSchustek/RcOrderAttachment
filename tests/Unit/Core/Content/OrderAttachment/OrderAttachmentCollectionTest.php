@@ -9,16 +9,15 @@ use Ruhrcoder\RcOrderAttachment\Core\Content\OrderAttachment\OrderAttachmentColl
 use Ruhrcoder\RcOrderAttachment\Core\Content\OrderAttachment\OrderAttachmentEntity;
 
 /**
- * Unit-Tests für die typed DAL-Collection — sichert die ID-Helfer, Filter und
- * Summen-Aggregation, die service-übergreifend genutzt werden.
+ * Prüft die Helfer der typisierten Anhangssammlung: ID-Listen, Filter nach Bestellung und
+ * Summe der Dateigrößen. Im Plugin ruft sie derzeit kein Dienst auf; der Test hält ihren
+ * Vertrag fest, solange sie öffentlich angeboten werden.
  */
 final class OrderAttachmentCollectionTest extends TestCase
 {
     /**
-     * Was: `getOrderIds()` und `getMediaIds()` über eine Mix-Collection.
-     * Warum: Diese Helfer treiben Batch-Loading, Indexierung und Delete-Pfade —
-     *        Reihenfolge und Vollständigkeit der IDs sind kritisch.
-     * Erwartet: Beide Listen enthalten alle IDs in Insertion-Reihenfolge.
+     * Die Listen behalten Doppelte und die Reihenfolge des Einfügens; `order-1` steht deshalb
+     * zweimal darin und wird nicht zusammengefasst.
      */
     public function testGetOrderAndMediaIds(): void
     {
@@ -33,11 +32,7 @@ final class OrderAttachmentCollectionTest extends TestCase
     }
 
     /**
-     * Was: `filterByOrderId` reduziert die Collection auf Treffer einer Order.
-     * Warum: Nach einem Batch-Load (mehrere Orders) müssen Caller pro Order
-     *        ihre eigene Sub-Collection ziehen — Standard-Pattern in der
-     *        Account-Order-Pagelet-Logik.
-     * Erwartet: Eine `OrderAttachmentCollection` mit nur dem Match.
+     * Nach dem Laden für mehrere Bestellungen zieht der Filter die Anhänge einer einzelnen heraus.
      */
     public function testFilterByOrderId(): void
     {
@@ -53,11 +48,7 @@ final class OrderAttachmentCollectionTest extends TestCase
     }
 
     /**
-     * Was: `getTotalFileSize()` summiert die `fileSize` aller Entities.
-     * Warum: Total-Size-Validator und Storage-Telemetrie nutzen das Summen-
-     *        Aggregat. Eine falsche Addition (z. B. Overflow) würde Limits
-     *        ineffektiv machen.
-     * Erwartet: 1024 + 2048 = 3072.
+     * Die Summe läuft über `fileSize` aller Einträge.
      */
     public function testTotalFileSize(): void
     {

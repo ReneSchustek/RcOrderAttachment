@@ -10,13 +10,12 @@ use Ruhrcoder\RcOrderAttachment\Tests\Integration\ContainerAccessTrait;
 use Shopware\Core\Framework\Test\TestCaseBase\KernelTestBehaviour;
 
 /**
- * Verifiziert, dass die Migration auf einer leeren DB idempotent läuft und
- * alle erwarteten Spalten + Indizes + Foreign-Keys anlegt.
+ * Prüft das Schema der Anhangstabelle (Spalten, Indizes, Fremdschlüssel) und dass ein
+ * wiederholter Migrationslauf nichts zerstört, denn jedes Plugin-Update ruft die Migration erneut.
  *
- * Nutzt `KernelTestBehaviour` statt `IntegrationTestBehaviour`, weil die Tests
- * DDL-Statements (`CREATE TABLE IF NOT EXISTS`) ausführen — DDL committet in
- * MySQL implizit, was den Transaction-Wrap aus `IntegrationTestBehaviour`
- * sprengen würde (`tearDown::rollBack` findet keine offene Transaction).
+ * Die Klasse nutzt `KernelTestBehaviour` statt `IntegrationTestBehaviour`, weil DDL in MySQL
+ * implizit committet. Die Transaktion um jeden Test wäre danach schon geschlossen, und
+ * `rollBack()` im `tearDown` fände keine offene Transaktion mehr.
  */
 final class Migration1715200000IntegrationTest extends TestCase
 {
@@ -24,12 +23,8 @@ final class Migration1715200000IntegrationTest extends TestCase
     use KernelTestBehaviour;
 
     /**
-     * Was: Migration legt alle erwarteten Spalten an.
-     * Warum: Schema-Drift-Schutz — wenn jemand versehentlich eine Spalte aus
-     *        der Migration löscht, würde der DAL-Definition-Mapping zur
-     *        Runtime brechen. Test fängt das früh.
-     * Erwartet: Alle Pflicht-Spalten (`id`, `order_id`, `media_id`, …) sind
-     *           in `SHOW COLUMNS` vorhanden.
+     * Fehlt eine Spalte, die die Entity-Definition erwartet, bricht das DAL-Mapping erst zur
+     * Laufzeit. Der Test meldet eine solche Abweichung schon beim Lauf der Suite.
      */
     public function testTableCreatedWithCorrectStructure(): void
     {
@@ -50,12 +45,8 @@ final class Migration1715200000IntegrationTest extends TestCase
     }
 
     /**
-     * Was: Migration legt die drei deklarierten Indexe an.
-     * Warum: Performance-Pflicht für die Storefront- und Cleanup-Pfade.
-     *        Fehlende Indexe führen bei größeren Shops zu Full-Table-Scans
-     *        in der Account-Order-Page und im Retention-Cron.
-     * Erwartet: `idx.rc_order_attachment.order_id`, `…media_id`, `…created_at`
-     *           sind vorhanden.
+     * Ohne diese drei Indizes liest die Bestellseite im Kundenkonto und die
+     * Aufbewahrungsbereinigung in größeren Shops die ganze Tabelle.
      */
     public function testIndexesPresent(): void
     {
@@ -69,11 +60,8 @@ final class Migration1715200000IntegrationTest extends TestCase
     }
 
     /**
-     * Was: Foreign-Keys auf `order` (Order+Version) und `media` sind angelegt.
-     * Warum: Datenintegrität-Pflicht. FK-Cascade auf `order` löscht
-     *        Anhänge automatisch beim Order-Drop, FK auf `media` schützt
-     *        vor Orphan-Anhängen.
-     * Erwartet: Beide Constraint-Namen in `information_schema`.
+     * Beide Fremdschlüssel löschen per Kaskade mit: Verschwindet die Bestellung oder das
+     * Medium, verschwindet auch die Anhangszeile, statt ins Leere zu zeigen.
      */
     public function testForeignKeysPresent(): void
     {
@@ -89,38 +77,34 @@ final class Migration1715200000IntegrationTest extends TestCase
     }
 
     /**
-     * Was: Migration zweimal hintereinander gegen dieselbe DB ausführen.
-     * Warum: Plugin-Update-Pfad ruft Migrationen bei jedem Run, Idempotenz ist
-     *        Senior-Pflicht (`CREATE TABLE IF NOT EXISTS`). Sonst würde jeder
-     *        Update-Run mit „Table already exists" abbrechen.
-     * Erwartet: Kein Throw beim zweiten `update()`-Aufruf.
+     * Jedes Plugin-Update ruft die Migration erneut auf. Ohne `CREATE TABLE IF NOT EXISTS`
+     * bräche es mit „Table already exists" ab.
      */
     public function testMigrationIsIdempotent(): void
     {
         $connection = static::connection();
         $migration = new Migration1715200000CreateOrderAttachmentTable();
 
-        // Ein Datensatz vor dem zweiten Lauf: Idempotenz heißt nicht nur „wirft nicht",
-        // sondern auch „räumt nichts weg". Ein `DROP TABLE IF EXISTS` vor dem `CREATE`
-        // wäre ebenfalls wiederholbar — und würde bei jedem Plugin-Update alle Anhänge
-        // löschen. `assertTrue(true)` hätte das durchgewinkt.
-        $spuren = $connection->fetchOne('SELECT COUNT(*) FROM `rc_order_attachment`');
+        // Die Zeilenzahl vor und nach den Läufen wird verglichen, weil Wiederholbarkeit
+        // auch heißt, dass nichts weggeräumt wird. Ein `DROP TABLE IF EXISTS` vor dem
+        // `CREATE` liefe ebenfalls fehlerfrei, löschte aber bei jedem Update alle Anhänge.
+        $traces = $connection->fetchOne('SELECT COUNT(*) FROM `rc_order_attachment`');
 
         $migration->update($connection);
         $migration->update($connection);
 
         self::assertSame(
-            $spuren,
+            $traces,
             $connection->fetchOne('SELECT COUNT(*) FROM `rc_order_attachment`'),
             'die Migration darf bestehende Anhänge nicht antasten',
         );
 
-        $struktur = $connection->fetchAllAssociative('SHOW COLUMNS FROM `rc_order_attachment`');
-        self::assertNotEmpty($struktur, 'die Tabelle muss nach dem zweiten Lauf weiter existieren');
+        $structure = $connection->fetchAllAssociative('SHOW COLUMNS FROM `rc_order_attachment`');
+        self::assertNotEmpty($structure, 'die Tabelle muss nach dem zweiten Lauf weiter existieren');
 
-        $spalten = array_column($struktur, 'Field');
-        foreach (['id', 'order_id', 'order_version_id', 'media_id', 'original_file_name'] as $pflichtfeld) {
-            self::assertContains($pflichtfeld, $spalten, 'Spalte darf durch den zweiten Lauf nicht verschwinden');
+        $tableColumns = array_column($structure, 'Field');
+        foreach (['id', 'order_id', 'order_version_id', 'media_id', 'original_file_name'] as $requiredField) {
+            self::assertContains($requiredField, $tableColumns, 'Spalte darf durch den zweiten Lauf nicht verschwinden');
         }
     }
 }

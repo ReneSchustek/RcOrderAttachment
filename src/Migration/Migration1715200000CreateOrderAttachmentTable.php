@@ -8,10 +8,12 @@ use Doctrine\DBAL\Connection;
 use Shopware\Core\Framework\Migration\MigrationStep;
 
 /**
- * Persistente Bindung zwischen einer Bestellung und den vom Kunden im Checkout
- * hochgeladenen Dokumenten (Zeichnungen, Skizzen, Pläne).
+ * Legt die Tabelle an, die eine Bestellung mit den vom Kunden im Checkout hochgeladenen
+ * Dokumenten verbindet (Zeichnungen, Skizzen, Pläne).
  *
- * Forward-only — nach Veröffentlichung nicht mehr verändern.
+ * Die Migration ist veröffentlicht und wird nicht mehr verändert; Änderungen am Schema brauchen
+ * eine neue Migration. Beide Fremdschlüssel löschen kaskadierend: Verschwindet die Bestellung oder
+ * das Medium, verschwindet auch die Zeile, und es bleibt kein Anhang ohne Datei zurück.
  */
 final class Migration1715200000CreateOrderAttachmentTable extends MigrationStep
 {
@@ -47,6 +49,6 @@ final class Migration1715200000CreateOrderAttachmentTable extends MigrationStep
 
     public function updateDestructive(Connection $connection): void
     {
-        // Aufräumen läuft ausschließlich über uninstall(keepUserData=false).
+        // Die Tabelle entfernt allein `uninstall()` mit `keepUserData = false`.
     }
 }

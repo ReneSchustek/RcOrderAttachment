@@ -7,8 +7,11 @@ namespace Ruhrcoder\RcOrderAttachment\Service\Session;
 use JsonSerializable;
 
 /**
- * Eintrag im {@see PendingUploadStore}. Enthält genug Information, um die Datei
- * nach Order-Abschluss zu verlinken und vor Abschluss wieder zu löschen.
+ * Eintrag im {@see PendingUploadStore} mit allem, was nötig ist, um die Datei nach dem
+ * Bestellabschluss zu verknüpfen oder vorher wieder zu löschen.
+ *
+ * In der Sitzung liegt er als Array, nicht als Objekt, damit eine geänderte Klasse alte Sitzungen
+ * nicht beim Entpacken zerbricht; {@see fromArray()} verwirft unvollständige Einträge.
  */
 final readonly class PendingUpload implements JsonSerializable
 {

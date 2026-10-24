@@ -19,11 +19,13 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
 use Throwable;
 
 /**
- * Plugin-Bootstrapper für RcOrderAttachment.
+ * Einstieg des Plugins: legt bei Installation und Update den Medienordner und das Zusatzfeld an
+ * und räumt bei der Deinstallation ohne `keepUserData` Tabelle, Medien und Ordner ab.
  *
- * Lifecycle-Notiz: Während `install()`/`update()` sind plugin-eigene Services
- * NICHT im DI-Container — Installer werden hier direkt instanziiert und nur
- * Core-Services aus dem Container geholt.
+ * Während `install()` und `update()` stehen die eigenen Dienste des Plugins noch nicht im
+ * Container. Die Installer entstehen deshalb von Hand, und aus dem Container kommen nur
+ * Kerndienste, jeder über {@see optionalService()}, damit ein fehlender Dienst den Ablauf nicht
+ * abbricht.
  */
 final class RcOrderAttachment extends Plugin
 {
@@ -62,7 +64,7 @@ final class RcOrderAttachment extends Plugin
             return;
         }
 
-        // Idempotent — sicher bei jedem Update, fügt das Set nur hinzu falls es fehlt.
+        // Der Installer arbeitet mit festen IDs per Upsert und verträgt jeden erneuten Aufruf.
         $this->customFieldInstaller($container)?->install(Context::createCLIContext());
     }
 
@@ -79,11 +81,9 @@ final class RcOrderAttachment extends Plugin
             return;
         }
 
-        // Die Verbindung wird über die Klasse geholt, nicht über den Symfony-Alias
-        // `database_connection`: Der Alias ist privat und `get()` wirft darauf eine
-        // ServiceNotFoundException. Das brach `uninstall()` ab, bevor irgendetwas aufgeräumt
-        // war — die privaten Customer-Uploads blieben liegen, also genau das, was diese
-        // Routine verhindern soll.
+        // Die Verbindung kommt über den Klassennamen, nicht über den Alias `database_connection`.
+        // Der Alias ist privat, `get()` wirft darauf eine ServiceNotFoundException, und
+        // `uninstall()` bräche ab, bevor die privaten Uploads der Kunden gelöscht sind.
         $connection = $this->optionalService($container, Connection::class);
         if (!$connection instanceof Connection) {
             $this->logUninstallFailure($container, 'connection', 0, null);
@@ -91,6 +91,7 @@ final class RcOrderAttachment extends Plugin
             return;
         }
 
+        // Die Medien-IDs müssen vor dem DROP gelesen sein, danach gibt es die Tabelle nicht mehr.
         $mediaIds = $connection->fetchFirstColumn(
             'SELECT LOWER(HEX(media_id)) FROM `rc_order_attachment`'
         );
@@ -98,8 +99,33 @@ final class RcOrderAttachment extends Plugin
         $connection->executeStatement('DROP TABLE IF EXISTS `rc_order_attachment`');
 
         $this->customFieldInstaller($container)?->uninstall(Context::createCLIContext());
-        $this->deleteMediaRecords($container, $mediaIds);
-        $this->deletePluginMediaFolder($container, $connection);
+
+        // Vorgemerkte und verwaiste Uploads haben keine Zeile in `rc_order_attachment`; sie liegen nur
+        // im Ordner des Plugins. Fiele der Ordner allein, setzte Shopware ihren Ordner auf NULL, und die
+        // privaten Dateien der Kunden blieben ohne Ordner liegen.
+        $folderId = $this->pluginMediaFolderId($connection);
+        $this->deleteMediaRecords($container, $this->mediaIdsToDelete($connection, $mediaIds, $folderId));
+        $this->deletePluginMediaFolder($container, $folderId);
+    }
+
+    /**
+     * Die Medien mit Bestellung und alle, die noch im Ordner des Plugins liegen.
+     *
+     * @param array<int, mixed> $linkedIds
+     *
+     * @return list<string>
+     */
+    private function mediaIdsToDelete(Connection $connection, array $linkedIds, ?string $folderId): array
+    {
+        $folderMediaIds = $folderId === null ? [] : $connection->fetchFirstColumn(
+            'SELECT LOWER(HEX(id)) FROM `media` WHERE media_folder_id = :folderId',
+            ['folderId' => Uuid::fromHexToBytes($folderId)],
+        );
+
+        return array_values(array_unique(array_map(
+            static fn (mixed $id): string => strtolower((string) $id),
+            array_merge($linkedIds, $folderMediaIds),
+        )));
     }
 
     private function customFieldInstaller(ContainerInterface $container): ?CustomFieldInstaller
@@ -119,12 +145,12 @@ final class RcOrderAttachment extends Plugin
     }
 
     /**
-     * Holt einen Core-Service, ohne den Plugin-Lifecycle zu sprengen.
+     * Liefert einen Kerndienst oder `null`, wenn der Container ihn nicht herausgibt.
      *
-     * `ContainerInterface::get()` wirft bei unbekannter **oder nicht-öffentlicher** ID. Eine
-     * ungeprüfte Abfrage reißt damit `install()`/`uninstall()` mitten im Ablauf ab und
-     * hinterlässt einen halben Zustand. Wer eine ID falsch rät, soll das im Log finden — nicht
-     * an einem abgebrochenen Kommando.
+     * `ContainerInterface::get()` wirft bei unbekannter oder nicht öffentlicher ID. Eine
+     * ungeprüfte Abfrage risse `install()` oder `uninstall()` mitten im Ablauf ab und hinterließe
+     * einen halben Zustand. Eine falsch geratene ID steht deshalb im Protokoll, statt das Kommando
+     * abzubrechen.
      */
     private function optionalService(ContainerInterface $container, string $id): ?object
     {
@@ -146,11 +172,11 @@ final class RcOrderAttachment extends Plugin
     /**
      * Logger-Kandidaten in der Reihenfolge, in der sie versucht werden.
      *
-     * `logger` ist in Shopware 6.7 **nicht öffentlich**; allein darauf gestützt liefe die
-     * Protokollierung der Aufräum-Fehler ins Leere, obwohl sie gerade gegen stille
-     * DSGVO-Rückstände da ist. Unter 6.7.12 sind `logger` und `Psr\Log\LoggerInterface`
-     * privat, `monolog.logger.business_events` öffentlich. Die Liste bleibt gestaffelt, weil die Sichtbarkeit eine
-     * Container-Entscheidung der jeweiligen Installation ist und sich ändern kann.
+     * In Shopware 6.7 sind `logger` und `Psr\Log\LoggerInterface` privat, öffentlich ist nur
+     * `monolog.logger.business_events`. Mit `logger` allein liefen die Meldungen über
+     * zurückgebliebene Kundendateien ins Leere. Die Liste bleibt gestaffelt, weil die
+     * Sichtbarkeit eine Entscheidung des Containers der jeweiligen Installation ist und sich
+     * ändern kann.
      *
      * @var list<string>
      */
@@ -161,10 +187,9 @@ final class RcOrderAttachment extends Plugin
     ];
 
     /**
-     * Der Logger wird ohne den Umweg über {@see optionalService()} geholt — sonst entstünde
-     * beim Fehlschlag eine Endlosschleife (Protokollieren, dass das Protokollieren fehlt).
-     * Findet sich keiner, läuft der Lifecycle still weiter: ein abgebrochener Uninstall wäre
-     * schlimmer als ein fehlender Log-Eintrag.
+     * Holt den Logger ohne {@see optionalService()}, weil der bei einem Fehlschlag selbst wieder
+     * protokollieren will und sich so endlos aufriefe. Findet sich keiner, läuft der Ablauf still
+     * weiter: Eine abgebrochene Deinstallation wäre schlimmer als ein fehlender Protokolleintrag.
      */
     private function logger(ContainerInterface $container): ?LoggerInterface
     {
@@ -206,11 +231,10 @@ final class RcOrderAttachment extends Plugin
         try {
             $repository->delete($payload, Context::createCLIContext());
         } catch (Throwable $exception) {
-            // Uninstall bleibt tolerant (eine harte Exception würde einen halben
-            // Zustand hinterlassen), aber der Fehler MUSS diagnostizierbar sein:
-            // Der plugin-eigene Orphan-Cleanup-Cron ist nach der Deinstallation
-            // deregistriert — es gibt keine zweite Chance. Zurückbleibende private
-            // Customer-Uploads (PII) müssen sonst unbemerkt liegen (DSGVO).
+            // Die Deinstallation läuft weiter, weil eine Ausnahme einen halben Zustand hinterließe.
+            // Der Fehler muss aber im Protokoll stehen: Die eigene Aufräumaufgabe ist danach
+            // abgemeldet, und zurückgebliebene private Dateien der Kunden blieben sonst
+            // unbemerkt liegen.
             $this->logUninstallFailure($container, 'media_records', \count($ids), $exception);
         }
     }
@@ -224,26 +248,38 @@ final class RcOrderAttachment extends Plugin
         ]);
     }
 
-    private function deletePluginMediaFolder(ContainerInterface $container, Connection $connection): void
+    /**
+     * Erst der Vermerk aus der Konfiguration, dann der Name. Hat jemand den Ordner in der
+     * Medienverwaltung umbenannt, findet ihn die Namenssuche allein nicht, und der Ordner bliebe
+     * beim Deinstallieren zurück.
+     */
+    private function pluginMediaFolderId(Connection $connection): ?string
     {
-        // Erst der Vermerk aus der Konfiguration, dann der Name. Hat jemand den Ordner im
-        // Medien-Manager umbenannt, findet ihn die Namenssuche allein nicht, und Ordner samt
-        // privater Kundendateien blieben beim Deinstallieren zurück, obwohl das Plugin
-        // Löschung zusagt.
         $folderId = $connection->fetchOne(
             'SELECT JSON_UNQUOTE(JSON_EXTRACT(configuration_value, "$._value"))
              FROM `system_config` WHERE configuration_key = :key LIMIT 1',
             ['key' => MediaFolderInstaller::FOLDER_ID_CONFIG_KEY],
         );
 
-        if (!\is_string($folderId) || !Uuid::isValid($folderId)) {
+        // Ein Vermerk auf einen schon gelöschten Ordner zählt nicht; dann trägt die Namenssuche.
+        $exists = \is_string($folderId) && Uuid::isValid($folderId) && $connection->fetchOne(
+            'SELECT 1 FROM `media_folder` WHERE id = :id',
+            ['id' => Uuid::fromHexToBytes($folderId)],
+        ) !== false;
+
+        if (!$exists) {
             $folderId = $connection->fetchOne(
                 'SELECT LOWER(HEX(id)) FROM `media_folder` WHERE name = :name LIMIT 1',
                 ['name' => MediaFolderInstaller::FOLDER_NAME],
             );
         }
 
-        if (!\is_string($folderId) || !Uuid::isValid($folderId)) {
+        return \is_string($folderId) && Uuid::isValid($folderId) ? strtolower($folderId) : null;
+    }
+
+    private function deletePluginMediaFolder(ContainerInterface $container, ?string $folderId): void
+    {
+        if ($folderId === null) {
             return;
         }
 

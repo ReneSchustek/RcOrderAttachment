@@ -18,9 +18,11 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\Uuid\Uuid;
 
 /**
- * Persistiert die finale Bindung zwischen einer Bestellung und den vom Kunden
- * im Checkout hochgeladenen Dateien. Wird nach erfolgreichem `checkout.order.placed`
- * aufgerufen.
+ * Speichert die Bindung zwischen einer Bestellung und einer im Checkout hochgeladenen Datei.
+ *
+ * Aufgerufen wird er nach `checkout.order.placed` und, wenn das scheitert, vom
+ * Wiederhol-Handler. Der Dateiname wird hier ein zweites Mal bereinigt, weil der Handler seine
+ * Werte aus der Warteschlange bekommt und nicht aus dem Upload-Dienst.
  */
 final class OrderAttachmentManager implements OrderAttachmentManagerInterface
 {
@@ -92,6 +94,7 @@ final class OrderAttachmentManager implements OrderAttachmentManagerInterface
             return 'application/octet-stream';
         }
 
+        // 127 Zeichen ist die Länge der Spalte `mime_type`.
         return mb_substr($trimmed, 0, 127);
     }
 
@@ -100,11 +103,12 @@ final class OrderAttachmentManager implements OrderAttachmentManagerInterface
         $criteria = new Criteria([$orderId]);
         $criteria->setLimit(1);
 
-        $order = $this->orderRepository->search($criteria, $context)->first();
+        $order = $this->orderRepository->search($criteria, $context)->getEntities()->first();
         if (!$order instanceof OrderEntity) {
             throw new AttachmentNotFoundException($orderId);
         }
 
+        // Ohne Versionsangabe im Context liefert die Suche die Live-Fassung.
         return $order->getVersionId() ?? Defaults::LIVE_VERSION;
     }
 }

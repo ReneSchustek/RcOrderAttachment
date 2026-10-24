@@ -24,10 +24,12 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
- * Senior-Muster: echter {@see OrderAttachmentDownloadService} + echter
- * {@see OrderAttachmentLoader} mit gemocktem {@see EntityRepository} —
- * keine Mocks finaler Plugin-Klassen. Geprüft werden die HTTP-Übersetzungen
- * des Controllers, nicht der Stream-Inhalt.
+ * Prüft, wie der Download-Endpunkt der Verwaltung Ergebnisse und Fehler in HTTP-Antworten
+ * übersetzt; der Inhalt des Datenstroms ist nicht Gegenstand. Ein falscher Status verrät
+ * entweder die Existenz von Datensätzen oder lässt den Mitarbeiter ohne Kundendatei stehen.
+ *
+ * Downloaddienst und Loader sind echt, gemockt ist nur das Repository darunter, weil sich die
+ * finalen Plugin-Klassen nicht mocken lassen.
  */
 final class OrderAttachmentAdminControllerTest extends TestCase
 {
@@ -35,10 +37,8 @@ final class OrderAttachmentAdminControllerTest extends TestCase
     private const MEDIA_ID = 'cccccccccccccccccccccccccccccccc';
 
     /**
-     * Was: Anhang existiert, Media-Stream verfügbar.
-     * Warum: Happy-Path der Auftragsbearbeitung — Mitarbeiter lädt das
-     *        Kundendokument direkt aus der Bestellung.
-     * Erwartet: 200 + `StreamedResponse`.
+     * Der Regelfall der Auftragsbearbeitung: Der Mitarbeiter lädt die Kundendatei direkt aus
+     * der Bestellung.
      */
     public function testDownloadStreamsAttachment(): void
     {
@@ -53,9 +53,8 @@ final class OrderAttachmentAdminControllerTest extends TestCase
     }
 
     /**
-     * Was: Anhang-ID ohne zugehörigen Datensatz.
-     * Warum: Kein IDOR-Disclosure — der Controller antwortet 404 statt 403/500.
-     * Erwartet: 404 + JSON-Error-Envelope mit stabilem Code.
+     * Eine unbekannte ID ergibt 404 mit festem Fehlercode statt 403 oder 500, damit sich aus
+     * der Antwort nicht ablesen lässt, welche IDs es gibt.
      */
     public function testDownloadReturns404WhenAttachmentMissing(): void
     {
@@ -68,10 +67,8 @@ final class OrderAttachmentAdminControllerTest extends TestCase
     }
 
     /**
-     * Was: Datensatz da, Media aber gelöscht (Retention/Orphan-Cleanup).
-     * Warum: Ein bereits gelöschtes Media darf keinen 500 auslösen und keine
-     *        Existenz durchsickern lassen — gleicher 404 wie „nicht vorhanden".
-     * Erwartet: 404.
+     * Hat eine Bereinigung das Medium schon entfernt, antwortet der Endpunkt mit demselben 404
+     * wie bei einem fehlenden Anhang statt mit 500, und die beiden Fälle bleiben ununterscheidbar.
      */
     public function testDownloadReturns404WhenMediaMissing(): void
     {
@@ -85,11 +82,8 @@ final class OrderAttachmentAdminControllerTest extends TestCase
     }
 
     /**
-     * Was: Unerwarteter Infrastruktur-Fehler beim DAL-Zugriff.
-     * Warum: Der Endpoint muss fail-safe antworten (kein Stacktrace-Leak), den
-     *        Fehler aber loggen. Abgrenzung zum 404: nur echte Server-Fehler
-     *        werden 500.
-     * Erwartet: 500 + stabiler Fehler-Code.
+     * Ein Fehler der Infrastruktur wird protokolliert und als 500 mit festem Code beantwortet,
+     * ohne Stacktrace in der Antwort. Nur solche Fehler werden 500, alles Fachliche bleibt 404.
      */
     public function testDownloadReturns500OnUnexpectedError(): void
     {

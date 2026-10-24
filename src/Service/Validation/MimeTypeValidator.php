@@ -7,15 +7,17 @@ namespace Ruhrcoder\RcOrderAttachment\Service\Validation;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 /**
- * Vergleicht den server-seitig erkannten MIME-Typ mit den Erwartungen für die
- * Endung. Die Erkennung läuft über `finfo` (von Symfony in UploadedFile::getMimeType
- * gekapselt) — der vom Browser gesendete `$_FILES['type']` wird NICHT verwendet.
+ * Vergleicht den auf dem Server erkannten MIME-Typ mit den Erwartungen für die Endung.
+ *
+ * Erkannt wird über `finfo`, das Symfony in `UploadedFile::getMimeType()` kapselt. Den Typ aus
+ * `$_FILES['type']` schickt der Browser und damit jeder Absender nach Belieben; er bleibt unbeachtet.
  */
 final class MimeTypeValidator
 {
     /**
-     * Erwartete MIME-Typen je erlaubter Endung. Mehrere Werte sind zulässig
-     * (z. B. `image/jpeg` und der inoffizielle `image/pjpeg`).
+     * Erwartete MIME-Typen je Endung. Mehrere Werte sind zulässig, weil `finfo` je nach Version
+     * verschieden meldet: `image/pjpeg` neben `image/jpeg`, `application/zip` für Office-Dateien,
+     * `text/plain` oder `application/octet-stream` für CAD-Formate.
      *
      * @var array<string, list<string>>
      */
@@ -52,8 +54,8 @@ final class MimeTypeValidator
     {
         $extension = strtolower($file->getClientOriginalExtension());
         if ($extension === '' || !isset(self::EXPECTED_MIMES[$extension])) {
-            // Keine konkrete Erwartung definiert → nicht hier ablehnen.
-            // Whitelist/Magic-Bytes haben das letzte Wort.
+            // Ohne Erwartung für die Endung lehnt dieser Prüfer nichts ab; das übernehmen die
+            // Endungsliste und die Signaturprüfung.
             return;
         }
 

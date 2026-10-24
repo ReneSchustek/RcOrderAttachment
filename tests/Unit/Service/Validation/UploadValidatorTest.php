@@ -18,9 +18,9 @@ use Ruhrcoder\RcOrderAttachment\Service\Validation\ValidationCode;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 /**
- * Unit-Tests für die Orchestrierung der Validierungs-Kette. Prüft die feste
- * Reihenfolge und die Early-Returns (PluginDisabled, UploadError) — die
- * Einzel-Validator-Tests stehen separat unter `ValidatorsTest`.
+ * Prüft das Zusammenspiel der Validatoren: Abbruch bei abgeschaltetem Plugin, Vorrang der
+ * Sperrliste vor der Freigabeliste und das Sammeln aller Fehler einer Datei. Die einzelnen
+ * Validatoren prüft `ValidatorsTest`.
  */
 final class UploadValidatorTest extends TestCase
 {
@@ -42,10 +42,7 @@ final class UploadValidatorTest extends TestCase
     }
 
     /**
-     * Was: Eine PDF-Datei mit korrekten Magic-Bytes und Default-Config.
-     * Warum: Happy-Path — der häufigste Customer-Upload (Bestellbeleg, Zeichnung).
-     *        Wenn er nicht durchgeht, ist die ganze Pipeline kaputt.
-     * Erwartet: `isValid() = true`.
+     * Der häufigste Upload, ein PDF mit passender Signatur, muss die ganze Kette passieren.
      */
     public function testHappyPathPdfPasses(): void
     {
@@ -58,11 +55,8 @@ final class UploadValidatorTest extends TestCase
     }
 
     /**
-     * Was: Plugin in der Config deaktiviert.
-     * Warum: Erste Gate-Stufe — wenn das Plugin aus ist, muss die Validierung
-     *        sofort mit `PLUGIN_DISABLED` brechen, ohne weitere Validatoren
-     *        zu rufen (Performance, klare Fehlermeldung).
-     * Erwartet: Genau ein Fail mit Code `PLUGIN_DISABLED` (Early-Return).
+     * Bei abgeschaltetem Plugin bricht die Kette sofort mit `PLUGIN_DISABLED` ab. Weitere Fehler
+     * daneben verwirrten nur, denn hochladen kann der Kunde ohnehin nichts.
      */
     public function testRejectsWhenPluginDisabled(): void
     {
@@ -78,19 +72,14 @@ final class UploadValidatorTest extends TestCase
     }
 
     /**
-     * Was: Admin trägt versehentlich `php` in die Whitelist ein, Customer
-     *      lädt eine PHP-Datei hoch.
-     * Warum: Defense-in-Depth — die hart kodierte Blacklist im
-     *        `DangerousContentValidator` muss das letzte Wort haben, sonst
-     *        wäre RCE möglich.
-     * Erwartet: Reject mit Code `extensionBlacklisted`.
+     * Steht `php` versehentlich in der Freigabeliste, hat die fest eingebaute Sperrliste im
+     * `DangerousContentValidator` trotzdem das letzte Wort. Sonst ließe sich Code einschleusen.
      */
     public function testBlacklistOverridesWhitelist(): void
     {
         $validator = $this->buildValidator();
         $file = $this->makeFile('payload.php', "<?php echo 1;");
 
-        // Admin hätte versehentlich .php in Whitelist eingetragen.
         $config = $this->config(allowed: ['php']);
 
         $result = $validator->validate($file, $config, 0, 0);
@@ -100,16 +89,13 @@ final class UploadValidatorTest extends TestCase
     }
 
     /**
-     * Was: Datei verletzt gleichzeitig Magic-Bytes (kein PDF-Header) und
-     *      Größen-Limit.
-     * Warum: UX-Pflicht — Customer soll alle Fehler einer Datei in einem
-     *        Roundtrip sehen, statt mehrere Anläufe machen zu müssen.
-     * Erwartet: Codes enthalten `magicBytesMismatch` UND `fileSizeExceeded`.
+     * Der Kunde sieht alle Fehler einer Datei auf einmal, statt sie in mehreren Anläufen einzeln
+     * zu entdecken.
      */
     public function testCollectsAllFailuresInOneRoundtrip(): void
     {
         $validator = $this->buildValidator();
-        // Endung erlaubt, aber Inhalt zu groß UND falsche Magic Bytes
+        // Die Endung ist erlaubt, aber 10 KB überschreiten die Grenze von 2 KB, und ein PDF-Kopf fehlt.
         $file = $this->makeFile('big.pdf', str_repeat('X', 10 * 1024));
         $config = $this->config(maxFileSizeKb: 2);
 

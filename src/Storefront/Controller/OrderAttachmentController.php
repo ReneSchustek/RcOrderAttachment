@@ -9,6 +9,7 @@ use Ruhrcoder\RcOrderAttachment\Service\Config\PluginConfigProvider;
 use Ruhrcoder\RcOrderAttachment\Service\Exception\AttachmentNotFoundException;
 use Ruhrcoder\RcOrderAttachment\Service\Exception\AttachmentUploadException;
 use Ruhrcoder\RcOrderAttachment\Service\Exception\InvalidAttachmentPayloadException;
+use Ruhrcoder\RcOrderAttachment\Service\Exception\MediaNotLoadedException;
 use Ruhrcoder\RcOrderAttachment\Service\OrderAttachmentDownloadService;
 use Ruhrcoder\RcOrderAttachment\Service\OrderAttachmentUploadService;
 use Ruhrcoder\RcOrderAttachment\Service\RateLimit\UploadRateLimiter;
@@ -26,25 +27,20 @@ use Symfony\Component\Routing\Attribute\Route;
 use Throwable;
 
 /**
- * Storefront-Endpoints für Customer-Datei-Uploads im Checkout.
+ * Storefront-Routen für die Uploads der Kunden im Checkout und den Download im Kundenkonto.
  *
- * - POST `/rc-order-attachment/upload` — multipart/form-data, Feld `file`
- *   (Confirm-Page-Upload, Login + Guest erlaubt)
- * - POST `/rc-order-attachment/{token}` — Pending-Upload vor Order-Abschluss entfernen
- *   (POST statt DELETE — Shopware routet Storefront-State-Changes über POST)
- * - GET `/account/order-attachment/{attachmentId}/download` — DSGVO Art. 15 Auskunft
- *   (Customer lädt seinen Anhang aus dem Kundenkonto, Owner-Check via DAL, Guest blockiert)
+ * `POST /rc-order-attachment/upload` nimmt eine Datei im Feld `file` entgegen, von der
+ * Bestätigungsseite und auch für Gäste. `POST /rc-order-attachment/{token}` entfernt einen noch
+ * nicht verknüpften Upload; es ist POST statt DELETE, weil die Storefront Zustandsänderungen über
+ * POST abwickelt. `GET /account/order-attachment/{attachmentId}/download` liefert dem angemeldeten
+ * Kunden seinen Anhang aus dem Kundenkonto (Auskunft nach Art. 15 DSGVO); Gäste haben dort keinen
+ * Zugang.
  *
- * Confirm-Page-Endpoints erlauben Guest-Sessions (Standard-Shopware-Verhalten).
- * Der Account-Download-Endpoint erfordert dagegen einen vollwertigen Customer-Account.
- *
- * CSRF: Shopware 6.7 hat keinen CSRF-Layer (`sw_csrf` und
- * `CsrfPlaceholderHandler` fehlen). Der Schutz gegen
- * Cross-Site-Requests liegt beim `SameSite=Lax`-Session-Cookie: ein
- * Cross-Site-POST bekommt die Session nicht mitgeschickt und läuft damit gegen
- * einen leeren PendingUploadStore. Zusätzlich sind alle mutierenden Endpoints
- * POST-only und die Tokens sind UUIDv7 aus `Uuid::randomHex()` mit 74 Bit Zufall neben dem
- * Zeitstempel, gebunden an die Session.
+ * Eine eigene CSRF-Prüfung gibt es nicht, weil Shopware 6.7 keinen CSRF-Layer hat
+ * (`sw_csrf` und `CsrfPlaceholderHandler` fehlen). Den Schutz trägt das
+ * Sitzungscookie mit `SameSite=Lax`: Eine POST-Anfrage von fremder Seite kommt ohne Sitzung an
+ * und trifft auf eine leere Upload-Liste. Alle ändernden Routen nehmen nur POST an, und die Tokens
+ * sind UUIDv7 aus `Uuid::randomHex()` mit 74 Bit Zufall neben dem Zeitstempel, gebunden an die Sitzung.
  */
 #[Route(defaults: [
     PlatformRequest::ATTRIBUTE_ROUTE_SCOPE => [StorefrontRouteScope::ID],
@@ -76,6 +72,8 @@ final class OrderAttachmentController extends StorefrontController
             return $this->errorResponse(['pluginDisabled'], Response::HTTP_FORBIDDEN);
         }
 
+        // Ohne Sitzung zählt die Grenze je IP-Adresse; hinter einem gemeinsamen Ausgang teilen sich
+        // dann mehrere Kunden einen Zähler.
         $sessionId = $request->hasSession() ? $request->getSession()->getId() : ($request->getClientIp() ?? '');
         if (!$this->rateLimiter->consume($sessionId, $config)) {
             return $this->errorResponse(['rateLimitExceeded'], Response::HTTP_TOO_MANY_REQUESTS);
@@ -91,8 +89,8 @@ final class OrderAttachmentController extends StorefrontController
         } catch (AttachmentUploadException $exception) {
             return $this->errorResponse($exception->codes, Response::HTTP_UNPROCESSABLE_ENTITY);
         } catch (InvalidAttachmentPayloadException $exception) {
-            // Customer-getriggert (z. B. ein Dateiname, der nach Sanitisierung leer
-            // ist): ein Eingabe-Fehler (422), kein Server-Fehler (500).
+            // Ausgelöst vom Kunden, etwa durch einen Dateinamen, der nach der Bereinigung leer ist.
+            // Das ist ein Eingabefehler (422), kein Serverfehler (500).
             return $this->errorResponse(['uploadError'], Response::HTTP_UNPROCESSABLE_ENTITY);
         } catch (Throwable $exception) {
             $this->logger->error('rc_order_attachment.controller.unexpected_failure', [
@@ -127,9 +125,8 @@ final class OrderAttachmentController extends StorefrontController
     )]
     public function remove(string $token, SalesChannelContext $context): JsonResponse
     {
-        // Der Token ist ein 128-Bit-Zufallswert aus der eigenen Session. Ein
-        // fremder Token trifft im PendingUploadStore auf `null` und der Aufruf
-        // ist ein No-Op — kein Cross-Session-Löschen möglich.
+        // Gesucht wird nur in der eigenen Sitzung. Ein fremder Token findet dort nichts, und der
+        // Aufruf bleibt ohne Wirkung; die Datei einer anderen Sitzung lässt sich so nicht löschen.
         $this->uploadService->remove($token, $context->getContext());
 
         $config = $this->configProvider->getForSalesChannel($context->getSalesChannelId());
@@ -156,8 +153,8 @@ final class OrderAttachmentController extends StorefrontController
     )]
     public function accountDownload(string $attachmentId, SalesChannelContext $context): Response
     {
-        // Guest-Customer haben kein Kundenkonto im klassischen Sinne — Download
-        // ist nur für eingeloggte Customer mit Customer-Account.
+        // Die Route sperrt Gäste schon über ihre Vorgaben. Die Prüfung hier deckt den Fall ab, dass
+        // ein Gast trotzdem bis in die Methode kommt, und gibt dann 403 statt einer Umleitung.
         $customer = $context->getCustomer();
         if (!$customer instanceof CustomerEntity || $customer->getGuest()) {
             return $this->secureJsonResponse(['success' => false, 'errors' => ['unauthorized']], Response::HTTP_FORBIDDEN);
@@ -165,7 +162,9 @@ final class OrderAttachmentController extends StorefrontController
 
         try {
             return $this->downloadService->streamForCustomer($attachmentId, $customer, $context->getContext());
-        } catch (AttachmentNotFoundException $exception) {
+        } catch (AttachmentNotFoundException | MediaNotLoadedException) {
+            // Auch ein Anhang, dessen Datei schon gelöscht ist (Aufbewahrungsfrist), ist für den Kunden
+            // nicht da; ein 500 meldete einen Serverfehler, wo nichts kaputt ist. Wie im Admin-Pfad.
             return $this->secureJsonResponse(['success' => false, 'errors' => ['notFound']], Response::HTTP_NOT_FOUND);
         } catch (Throwable $exception) {
             $this->logger->error('rc_order_attachment.account_download.failed', [
@@ -191,9 +190,9 @@ final class OrderAttachmentController extends StorefrontController
     }
 
     /**
-     * Bündelt die JSON-Response mit den Pflicht-Browser-Headern, die MIME-Sniffing,
-     * Framing und Inline-Script-Execution verhindern. Wird auf alle Endpoint-Antworten
-     * angewendet, damit kein Pfad versehentlich ohne Hardening rausgeht.
+     * Baut jede JSON-Antwort dieses Controllers mit den Kopfzeilen, die MIME-Raten, Einbetten in
+     * Rahmen und Skriptausführung verhindern. Alle Routen nutzen sie, damit keine Antwort ohne
+     * diese Kopfzeilen hinausgeht.
      *
      * @param array<string, mixed> $data
      */

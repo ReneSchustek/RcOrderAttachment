@@ -1,7 +1,8 @@
 {% sw_extends '@Storefront/storefront/page/account/order-history/order-detail.html.twig' %}
 
-{# Erweitert die Order-Detail-Sicht im Kundenkonto um eine Liste der vom Customer
-   hochgeladenen Anhänge mit Download-Link. Pflicht nach DSGVO Art. 15 (Auskunft). #}
+{# Ergänzt die Bestelldetails im Kundenkonto um die Liste der hochgeladenen Anhänge mit
+   Download-Link, damit der Kunde sieht, welche Dateien gespeichert sind (Auskunft nach
+   Art. 15 DSGVO). #}
 
 {% block page_account_order_documents_table %}
     {{ parent() }}

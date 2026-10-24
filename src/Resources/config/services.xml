@@ -11,9 +11,11 @@
             <tag name="shopware.entity.definition" entity="rc_order_attachment"/>
         </service>
 
-        <!-- Konfiguration. Public, damit der Integration-Test die effektive
-             Konfiguration gegenprüfen kann (Nicht-Vakuitäts-Assertion). -->
-        <service id="Ruhrcoder\RcOrderAttachment\Service\Config\PluginConfigProvider" public="true">
+        <!-- Konfiguration. Bleibt privat, auch wenn der Integrationstest sie liest:
+             `getContainer()` der Test-Basisklasse liefert `test.service_container`, der auch
+             private Dienste herausreicht. Ein öffentlicher Dienst nur für den Test vergrößerte
+             die Angriffsfläche im Betrieb ohne Gegenwert. -->
+        <service id="Ruhrcoder\RcOrderAttachment\Service\Config\PluginConfigProvider">
             <argument type="service" id="Shopware\Core\System\SystemConfig\SystemConfigService"/>
         </service>
 
@@ -22,25 +24,25 @@
             <argument type="service" id="media_folder.repository"/>
             <argument type="service" id="media_folder_configuration.repository"/>
             <!-- Für den Vermerk der Ordner-ID. Ohne ihn fände nur die Namenssuche den Ordner, und
-                 eine Umbenennung im Medien-Manager legte Cleanup und Deinstallation still. -->
+                 eine Umbenennung in der Medienverwaltung legte Aufräumen und Deinstallation still. -->
             <argument type="service" id="Doctrine\DBAL\Connection"/>
         </service>
 
-        <!-- Filename-Sanitization (einzige Quelle der Wahrheit gegen CRLF/Bidi/Steuerzeichen) -->
+        <!-- Bereinigung der Dateinamen (Zeilenumbrüche, Richtungs- und Steuerzeichen) für alle Aufrufer -->
         <service id="Ruhrcoder\RcOrderAttachment\Service\Filename\FilenameSanitizer"/>
 
-        <!-- EXIF-Strip aus Bildern (DSGVO: GPS-Daten aus Smartphone-Fotos) -->
+        <!-- Entfernt EXIF-Daten wie GPS-Koordinaten aus Smartphone-Fotos (DSGVO) -->
         <service id="Ruhrcoder\RcOrderAttachment\Service\Image\ExifStripper">
             <argument type="service" id="logger"/>
         </service>
 
-        <!-- Rate-Limiter (Cache-basiert, Fail-Open bei Cache-Fehlern) -->
+        <!-- Upload-Bremse je Sitzung über den Objekt-Cache; ist der Cache gestört, gehen Uploads durch -->
         <service id="Ruhrcoder\RcOrderAttachment\Service\RateLimit\UploadRateLimiter">
             <argument type="service" id="cache.object"/>
             <argument type="service" id="logger"/>
         </service>
 
-        <!-- Validierungs-Pipeline -->
+        <!-- Prüfkette für Uploads -->
         <service id="Ruhrcoder\RcOrderAttachment\Service\Validation\ExtensionValidator"/>
         <service id="Ruhrcoder\RcOrderAttachment\Service\Validation\DangerousContentValidator"/>
         <service id="Ruhrcoder\RcOrderAttachment\Service\Validation\MimeTypeValidator"/>
@@ -59,14 +61,13 @@
             <argument type="service" id="Ruhrcoder\RcOrderAttachment\Service\Validation\FileCountValidator"/>
         </service>
 
-        <!-- Session-Store -->
+        <!-- Vorgemerkte Uploads in der Sitzung -->
         <service id="Ruhrcoder\RcOrderAttachment\Service\Session\PendingUploadStore">
             <argument type="service" id="request_stack"/>
         </service>
 
-        <!-- Lese-/Schreib-Services -->
-        <!-- Public, damit Integration-Tests den Service direkt aus dem Container holen können. -->
-        <service id="Ruhrcoder\RcOrderAttachment\Service\OrderAttachmentLoader" public="true">
+        <!-- Lesen und Schreiben der Anhänge -->
+        <service id="Ruhrcoder\RcOrderAttachment\Service\OrderAttachmentLoader">
             <argument type="service" id="rc_order_attachment.repository"/>
         </service>
 
@@ -77,10 +78,8 @@
             <argument type="service" id="Ruhrcoder\RcOrderAttachment\Service\Filename\FilenameSanitizer"/>
             <argument type="service" id="logger"/>
         </service>
-        <!-- Public-Alias, damit Integration-Tests `getContainer()->get(OrderAttachmentManagerInterface::class)` auflösen können. -->
         <service id="Ruhrcoder\RcOrderAttachment\Service\OrderAttachmentManagerInterface"
-                 alias="Ruhrcoder\RcOrderAttachment\Service\OrderAttachmentManager"
-                 public="true"/>
+                 alias="Ruhrcoder\RcOrderAttachment\Service\OrderAttachmentManager"/>
 
         <service id="Ruhrcoder\RcOrderAttachment\Service\OrderAttachmentUploadService">
             <argument type="service" id="Ruhrcoder\RcOrderAttachment\Service\Validation\UploadValidator"/>
@@ -100,10 +99,11 @@
             <argument type="service" id="logger"/>
         </service>
 
-        <!-- Cart-Validator (Pflicht-Upload-Erzwingung) -->
+        <!-- Warenkorbprüfung, die einen Pflicht-Anhang durchsetzt -->
         <service id="Ruhrcoder\RcOrderAttachment\Checkout\Cart\RequiredAttachmentValidator">
             <argument type="service" id="Ruhrcoder\RcOrderAttachment\Service\Config\PluginConfigProvider"/>
             <argument type="service" id="Ruhrcoder\RcOrderAttachment\Service\Session\PendingUploadStore"/>
+            <argument type="service" id="request_stack"/>
             <tag name="shopware.cart.validator"/>
         </service>
 
@@ -120,21 +120,20 @@
             </call>
         </service>
 
-        <!-- Admin-API-Controller: Anhang-Download an der Bestellung (ACL order:read) -->
+        <!-- Admin-API: Download eines Anhangs an der Bestellung, geschützt durch order:read -->
         <service id="Ruhrcoder\RcOrderAttachment\Administration\Controller\OrderAttachmentAdminController" public="true">
             <argument type="service" id="Ruhrcoder\RcOrderAttachment\Service\OrderAttachmentDownloadService"/>
             <argument type="service" id="logger"/>
             <tag name="controller.service_arguments"/>
         </service>
 
-        <!-- Media-Whitelist-Erweiterung -->
+        <!-- Ergänzt die Endungsliste des Kerns für Uploads dieses Plugins -->
         <service id="Ruhrcoder\RcOrderAttachment\Service\Subscriber\MediaWhitelistSubscriber">
-            <argument type="service" id="Ruhrcoder\RcOrderAttachment\Service\Config\PluginConfigProvider"/>
             <tag name="kernel.event_subscriber"/>
         </service>
 
-        <!-- Page-Loader: zentrale Datenquelle für Confirm- und Account-Order-Pagelets,
-             vorbereitet für künftige Caching-Decoration über das Interface. -->
+        <!-- Datenquelle für Bestätigungsseite und Bestellübersicht im Kundenkonto; über die
+             Schnittstelle lässt sich ein Dekorator einhängen. -->
         <service id="Ruhrcoder\RcOrderAttachment\Storefront\Page\OrderAttachmentPageletLoader">
             <argument type="service" id="Ruhrcoder\RcOrderAttachment\Service\Config\PluginConfigProvider"/>
             <argument type="service" id="Ruhrcoder\RcOrderAttachment\Service\Session\PendingUploadStore"/>
@@ -155,9 +154,9 @@
             <argument type="service" id="messenger.default_bus"/>
             <argument type="service" id="logger"/>
             <tag name="kernel.event_subscriber"/>
-            <!-- kernel.reset löst pro Request-Ende die ResetInterface::reset() aus.
-                 Pflicht für Worker-Mode-Setups (Swoole/RoadRunner/FrankenPHP), damit
-                 der Snapshot nicht zwischen Customer-Requests leakt. -->
+            <!-- kernel.reset ruft am Ende jeder Anfrage reset() auf. Im Worker-Betrieb (Swoole,
+                 RoadRunner, FrankenPHP) bliebe die Kopie der Upload-Liste sonst bis in die
+                 Anfrage des nächsten Kunden stehen. -->
             <tag name="kernel.reset" method="reset"/>
         </service>
 
@@ -173,25 +172,24 @@
         <service id="Ruhrcoder\RcOrderAttachment\Service\Mail\MailAttachmentStatusTrackerInterface"
                  alias="Ruhrcoder\RcOrderAttachment\Service\Mail\MailAttachmentStatusTracker"/>
 
-        <!-- Löst `data['templateId']` zum Mail-Template-Type-`technicalName` auf.
-             Shopware liefert im MailBeforeValidateEvent keinen `mailTemplate`-Key —
-             ohne diesen Resolver könnte die Whitelist nur Flow-Event-Namen sehen.
-             kernel.reset leert den Lookup-Cache pro Request (Worker-Mode). -->
+        <!-- Ermittelt zu `data['templateId']` den `technicalName` des Vorlagentyps. Shopware gibt
+             im MailBeforeValidateEvent keinen Schlüssel `mailTemplate` mit; ohne diesen Dienst
+             sähe die Liste erlaubter Vorlagen nur Ereignisnamen. kernel.reset leert den
+             Zwischenspeicher nach jeder Anfrage im Worker-Betrieb. -->
         <service id="Ruhrcoder\RcOrderAttachment\Service\Mail\MailTemplateTypeResolver">
             <argument type="service" id="mail_template.repository"/>
             <argument type="service" id="logger"/>
             <tag name="kernel.reset" method="reset"/>
         </service>
         <service id="Ruhrcoder\RcOrderAttachment\Service\Mail\MailTemplateTypeResolverInterface"
-                 alias="Ruhrcoder\RcOrderAttachment\Service\Mail\MailTemplateTypeResolver"
-                 public="true"/>
+                 alias="Ruhrcoder\RcOrderAttachment\Service\Mail\MailTemplateTypeResolver"/>
 
-        <!-- Public, damit der Integration-Test den Subscriber mit dem echten
-             Service-Graph aus dem Container holen kann (siehe
-             tests/Integration/Storefront/Subscriber/). Direkt aufrufen statt
-             über den event_dispatcher: MailBeforeValidateEvent ist FlowEventAware,
-             ein Dispatch würde die Flow-Ausführung antriggern. -->
-        <service id="Ruhrcoder\RcOrderAttachment\Storefront\Subscriber\MailBeforeValidateSubscriber" public="true">
+        <!-- Der Integrationstest holt den Subscriber mit allen echten Abhängigkeiten aus dem
+             Testcontainer (siehe tests/Integration/Storefront/Subscriber/) und ruft ihn direkt
+             auf statt über den event_dispatcher, weil MailBeforeValidateEvent FlowEventAware ist
+             und ein Auslösen die Flows starten würde. Öffentlich muss der Dienst dafür nicht sein,
+             `test.service_container` reicht auch private Dienste heraus. -->
+        <service id="Ruhrcoder\RcOrderAttachment\Storefront\Subscriber\MailBeforeValidateSubscriber">
             <argument type="service" id="Ruhrcoder\RcOrderAttachment\Service\OrderAttachmentLoader"/>
             <argument type="service" id="Shopware\Core\Content\Media\MediaService"/>
             <argument type="service" id="Ruhrcoder\RcOrderAttachment\Service\Config\PluginConfigProvider"/>
@@ -219,7 +217,7 @@
             <tag name="messenger.message_handler"/>
         </service>
 
-        <!-- Scheduled Tasks -->
+        <!-- Geplante Aufgaben zum Aufräumen -->
         <service id="Ruhrcoder\RcOrderAttachment\ScheduledTask\OrphanedAttachmentCleanupTask">
             <tag name="shopware.scheduled.task"/>
         </service>

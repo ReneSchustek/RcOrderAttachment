@@ -1,9 +1,9 @@
-/* RcOrderAttachment — Confirm-Page Upload + Account-Bereich */
+// Upload-Box auf der Bestätigungsseite und Anhangsliste im Kundenkonto.
 
 .rc-order-attachment {
     margin-top: 1rem;
 
-    /* Sichtbarer Tastatur-Fokus — WCAG 2.4.7 (BFSG-Pflicht). */
+    // Sichtbarer Tastaturfokus nach WCAG 2.4.7, den das Barrierefreiheitsstärkungsgesetz verlangt.
     :focus-visible {
         outline: 2px solid var(--bs-primary, #0d6efd);
         outline-offset: 2px;
@@ -37,16 +37,16 @@
     color: var(--bs-danger);
     text-decoration: none;
     padding: 0.25rem 0.5rem;
-    min-height: 24px; /* WCAG 2.5.8 Touch-Ziel-Mindestgröße */
+    min-height: 24px; // Mindestgröße eines Zielbereichs nach WCAG 2.5.8
     min-width: 24px;
 
-    /* Auf Touch-Geräten die volle Zielgröße nach WCAG 2.5.5 (44 px). Die Schaltfläche sitzt
-       direkt neben dem Dateinamen, und ein Fehlgriff LÖSCHT den Anhang — auf einem Handy ist
-       das der teuerste Vertipper der Seite. Am Zeigegerät bleibt es bei den 24 px aus 2.5.8:
-       dort ist die Treffsicherheit höher und die Zeile bleibt kompakt.
-
-       `pointer: coarse` statt `hover: none`, weil hier die Zeigegenauigkeit zählt und nicht die
-       Frage, ob das Gerät einen Hover-Zustand kennt. */
+    // Auf Touch-Geräten gilt die volle Zielgröße nach WCAG 2.5.5 (44 px). Die Schaltfläche sitzt
+    // direkt neben dem Dateinamen, und ein Fehlgriff löscht den Anhang; auf dem Telefon ist das
+    // der teuerste Vertipper der Seite. Mit Maus bleibt es bei den 24 px aus 2.5.8, weil die
+    // Treffsicherheit dort höher ist und die Zeile kompakt bleibt.
+    //
+    // `pointer: coarse` statt `hover: none`, weil hier die Zeigegenauigkeit zählt und nicht, ob
+    // das Gerät einen Hover-Zustand kennt.
     @media (pointer: coarse) {
         display: inline-flex;
         align-items: center;
@@ -67,22 +67,23 @@
     }
 }
 
-/* Hint-Text wird auf Touch-Geräten ausgeblendet — „Drop file here" ist auf
-   Mobile irreführend (kein Drag&Drop). */
+// Auf Touch-Geräten verschwindet der Hinweis „Datei hier ablegen", weil es dort kein Ziehen und
+// Ablegen gibt.
 @media (hover: none) {
     [data-rc-order-attachment-hint] {
         display: none;
     }
 }
 
-/* WCAG 2.3.3 / 2.2.2 — Respect für `prefers-reduced-motion`. */
+// Wer reduzierte Bewegung eingestellt hat, sieht den Fortschrittsbalken ohne Animation
+// (WCAG 2.3.3 und 2.2.2).
 @media (prefers-reduced-motion: reduce) {
     .rc-order-attachment .progress-bar-animated {
         animation: none;
     }
 }
 
-/* Account-Bereich-Sicht */
+// Anhangsliste im Kundenkonto
 .rc-order-attachment-account {
     border-top: 1px solid var(--bs-border-color);
     padding-top: 1rem;
@@ -101,7 +102,7 @@
     }
 }
 
-/* Datenschutz-Hinweis dezent halten. */
+// Der Datenschutzhinweis bleibt zugeklappt und unauffällig.
 .rc-order-attachment-privacy {
     summary {
         cursor: pointer;

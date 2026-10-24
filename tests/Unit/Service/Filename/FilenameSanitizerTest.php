@@ -10,9 +10,9 @@ use Ruhrcoder\RcOrderAttachment\Service\Exception\InvalidAttachmentPayloadExcept
 use Ruhrcoder\RcOrderAttachment\Service\Filename\FilenameSanitizer;
 
 /**
- * Unit-Tests für die Filename-Bereinigung — CRLF, Steuerzeichen, Unicode-Bidi,
- * Pfad-Komponenten, Längen-Limit. Schützt die zentrale Sanitization-Stelle vor
- * Regressionen (siehe Security-Begründung im Sanitizer selbst).
+ * Prüft die Bereinigung des Dateinamens: Pfadbestandteile, Zeilenumbrüche und Steuerzeichen,
+ * Unicode-Richtungszeichen, Punkte am Rand und die Längengrenze. Der Name landet in Datenbank,
+ * Mailanhang und Verwaltung, und jede dieser Stellen ist für eine andere Sorte Zeichen anfällig.
  */
 final class FilenameSanitizerTest extends TestCase
 {
@@ -24,10 +24,8 @@ final class FilenameSanitizerTest extends TestCase
     }
 
     /**
-     * Was: Normaler Filename ohne Sonderzeichen.
-     * Warum: Happy-Path — eine harmlose Eingabe darf nicht versehentlich
-     *        modifiziert werden, sonst geht der ursprüngliche Name verloren.
-     * Erwartet: Identisches Resultat ohne Änderungen.
+     * Ein harmloser Name bleibt unverändert, sonst ginge der Name verloren, unter dem der Kunde
+     * die Datei kennt.
      */
     public function testHarmlessFilenamePassesUnchanged(): void
     {
@@ -35,10 +33,8 @@ final class FilenameSanitizerTest extends TestCase
     }
 
     /**
-     * Was: Filename mit führenden/abschließenden Leerzeichen.
-     * Warum: Browser-Copy-Paste fügt oft Whitespace ein — Filesystem behandelt
-     *        Whitespace im Filename inkonsistent zwischen OS.
-     * Erwartet: Whitespace außen wird entfernt.
+     * Leerzeichen am Rand entstehen leicht beim Kopieren, und Dateisysteme gehen unterschiedlich
+     * mit ihnen um.
      */
     public function testTrimsLeadingTrailingWhitespace(): void
     {
@@ -46,10 +42,8 @@ final class FilenameSanitizerTest extends TestCase
     }
 
     /**
-     * Was: Filenames mit Path-Traversal-Komponenten (`../`, Windows `\`).
-     * Warum: Direkter Schutz gegen Path-Traversal — `basename()` darf den
-     *        ursprünglichen Filename nur als letzten Pfadbestandteil interpretieren.
-     * Erwartet: Nur der Basename überlebt; `../etc/passwd` → `passwd`.
+     * Vom Namen bleibt nur der letzte Pfadbestandteil, auch bei Windows-Trennern. Sonst könnte ein
+     * Name mit `../` aus dem Zielverzeichnis herausführen.
      */
     public function testStripsPathComponents(): void
     {
@@ -58,11 +52,8 @@ final class FilenameSanitizerTest extends TestCase
     }
 
     /**
-     * Was: Filenames mit CR, LF, Tab, Null-Byte.
-     * Warum: Schutz vor Log-Injection und Mail-Header-Injection — ein CRLF in
-     *        einem Filename, der später in einen Mail-Header rutscht, kann
-     *        zusätzliche Header injizieren.
-     * Erwartet: Steuerzeichen werden durch `_` ersetzt.
+     * Ein CRLF im Namen, der später in einem Mailkopf oder einer Protokollzeile steht, könnte
+     * dort weitere Kopfzeilen oder Einträge einschleusen. Jedes Zeichen wird einzeln zu `_`.
      */
     public function testReplacesCrLfTabNull(): void
     {
@@ -72,10 +63,8 @@ final class FilenameSanitizerTest extends TestCase
     }
 
     /**
-     * Was: Filenames mit ASCII-Control-Characters (`\x01`–`\x1F`, `\x7F`).
-     * Warum: Defense-in-Depth — Steuerzeichen können in PDF-Readern oder
-     *        Mail-Clients unerwartete Effekte (Terminal-Codes etc.) auslösen.
-     * Erwartet: Alle Control-Chars durch `_` ersetzt.
+     * Die übrigen ASCII-Steuerzeichen und DEL können in Mailprogrammen oder auf einem Terminal
+     * unerwartet wirken und werden ebenfalls ersetzt.
      */
     public function testStripsAsciiControlCharacters(): void
     {
@@ -85,12 +74,9 @@ final class FilenameSanitizerTest extends TestCase
     }
 
     /**
-     * Was: Filename mit Unicode-Bidi-Markern (U+202A–E, U+2066–9).
-     * Warum: RTL-Override-Phishing — `cute<U+202E>gpj.exe` wird im Datei-
-     *        Explorer als `cute.exe.jpg` angezeigt und täuscht den Nutzer.
-     *        Pflicht aus Security-Sicht.
-     * Erwartet: Alle Bidi-Marker werden durch `_` ersetzt; Sequenz der nicht-
-     *           Bidi-Bytes bleibt unverändert.
+     * Richtungszeichen täuschen über die Endung: `cute<U+202E>gpj.exe` erscheint im
+     * Dateimanager als `cuteexe.jpg`. Jedes Zeichen aus U+202A bis U+202E und U+2066 bis U+2069
+     * wird zu `_`, alles andere bleibt in seiner Reihenfolge.
      */
     #[DataProvider('provideBidiMarkers')]
     public function testStripsUnicodeBidiMarkers(string $input, string $expected): void
@@ -114,11 +100,8 @@ final class FilenameSanitizerTest extends TestCase
     }
 
     /**
-     * Was: Filenames mit führenden oder abschließenden Punkten.
-     * Warum: Unix-„versteckte Dateien" (`.htaccess`) und Windows-Trailing-Dots
-     *        können das Filesystem-Verhalten verändern oder Dateien unsichtbar
-     *        machen.
-     * Erwartet: Punkte am Anfang/Ende werden getrimmt.
+     * Ein Punkt am Anfang macht unter Unix eine versteckte Datei wie `.htaccess`, Punkte am Ende
+     * verschluckt Windows. Beides fällt am Rand weg.
      */
     public function testTrimsLeadingTrailingDots(): void
     {
@@ -128,11 +111,8 @@ final class FilenameSanitizerTest extends TestCase
     }
 
     /**
-     * Was: 300 Zeichen langer Filename.
-     * Warum: Die DB-Spalte `original_file_name` ist `VARCHAR(255)` — längere
-     *        Werte würden bei einem strikten SQL-Mode ein Insert-Fehler werfen.
-     *        Außerdem haben Filesystems eigene Limits.
-     * Erwartet: Länge wird auf `FilenameSanitizer::MAX_LENGTH` (255) gekappt.
+     * Die Spalte `original_file_name` ist `VARCHAR(255)`, im strikten SQL-Modus scheiterte ein
+     * längerer Wert beim Einfügen. Gezählt wird in Zeichen, nicht in Byte.
      */
     public function testTrimsToMaxLength(): void
     {
@@ -142,11 +122,8 @@ final class FilenameSanitizerTest extends TestCase
     }
 
     /**
-     * Was: Filenames mit deutschen Umlauten und CJK-Zeichen.
-     * Warum: B2C-Kundschaft lädt oft Dateien mit Unicode-Filenames hoch
-     *        („Größe-Übermaß.pdf"). Diese müssen erhalten bleiben — nur die
-     *        gefährlichen Bidi-/Control-Chars sollen rausfliegen.
-     * Erwartet: Multibyte-Zeichen bleiben unverändert.
+     * Umlaute und andere Schriften sind in Kundennamen alltäglich und bleiben erhalten. Entfernt
+     * werden nur Richtungs- und Steuerzeichen.
      */
     public function testHandlesMultibyteUnicodeCorrectly(): void
     {
@@ -155,11 +132,8 @@ final class FilenameSanitizerTest extends TestCase
     }
 
     /**
-     * Was: Leerer String als Eingabe.
-     * Warum: Programmierfehler oder kaputter Upload — der Sanitizer darf nicht
-     *        stillschweigend einen leeren Filename zurückgeben, sonst landet
-     *        ein leerer String in der DB.
-     * Erwartet: `InvalidAttachmentPayloadException`.
+     * Ein leerer Name deutet auf einen Programmfehler oder kaputten Upload. Stillschweigend
+     * zurückgegeben, landete er als leerer Text in der Datenbank.
      */
     public function testThrowsOnEmptyInput(): void
     {
@@ -168,10 +142,7 @@ final class FilenameSanitizerTest extends TestCase
     }
 
     /**
-     * Was: Eingabe nur aus Whitespace und Steuerzeichen.
-     * Warum: Nach dem Trim bleibt ein leerer String — derselbe Fehler wie bei
-     *        komplett leerem Input.
-     * Erwartet: `InvalidAttachmentPayloadException`.
+     * Nach dem Kürzen der Ränder bleibt nichts übrig, also derselbe Fehler wie bei leerer Eingabe.
      */
     public function testThrowsOnWhitespaceOnlyInput(): void
     {
@@ -180,34 +151,26 @@ final class FilenameSanitizerTest extends TestCase
     }
 
     /**
-     * Was: Eingabe besteht NUR aus Bidi-Markern.
-     * Warum: Edge-Case — die Bidi-Marker werden durch `_` ersetzt, nicht
-     *        entfernt. Resultat ist also nicht leer, wird durchgelassen.
-     * Erwartet: `__` (zwei Underscores, je einer pro Marker).
+     * Grenzfall: Richtungszeichen werden ersetzt, nicht entfernt. Ein Name nur aus ihnen ergibt
+     * deshalb einen Unterstrich je Zeichen und keinen Fehler.
      */
     public function testBidiOnlyInputReplacedWithUnderscores(): void
     {
-        // Bidi-Marker werden auf `_` ersetzt (nicht gelöscht) — Resultat ist nicht leer.
         self::assertSame('__', $this->sanitizer->sanitize("\xE2\x80\xAE\xE2\x80\xAA"));
     }
 
     /**
-     * Was: Eingabe `..` (Parent-Directory-Notation).
-     * Warum: `basename('..')` liefert `..`, dann werden alle Dots getrimmt → leer.
-     *        Schutz vor Path-Traversal-ähnlichen Eingaben.
-     * Erwartet: `InvalidAttachmentPayloadException`.
+     * `basename('..')` liefert `..`, nach dem Kürzen der Punkte bleibt nichts. Das übergeordnete
+     * Verzeichnis ist kein Dateiname.
      */
     public function testDoubleDotIsNotConsideredAFile(): void
     {
-        // basename('..') → '..', trim auf Dots → '' → Exception.
         $this->expectException(InvalidAttachmentPayloadException::class);
         $this->sanitizer->sanitize('..');
     }
 
     /**
-     * Was: Eingabe `.` (aktuelles Verzeichnis).
-     * Warum: Analoge Defense — Single-Dot ist kein gültiger Filename.
-     * Erwartet: `InvalidAttachmentPayloadException`.
+     * Ebenso wenig das aktuelle Verzeichnis `.`.
      */
     public function testSingleDotIsNotConsideredAFile(): void
     {

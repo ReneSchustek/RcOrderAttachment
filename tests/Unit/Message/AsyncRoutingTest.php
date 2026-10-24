@@ -11,26 +11,25 @@ use Ruhrcoder\RcOrderAttachment\Message\RetryOrderAttachmentLinkMessage;
 use Shopware\Core\Framework\MessageQueue\AsyncMessageInterface;
 
 /**
- * Nagelt die Transport-Zuordnung der beiden Retry-Nachrichten fest.
+ * Hält fest, dass beide Wiederholungsnachrichten über den asynchronen Transport laufen.
  *
- * Hintergrund, in der Testumgebung gemessen: Ohne Zuordnung behandelt Symfony eine Nachricht
- * synchron. Der Handler rechnet dann zwar seinen Exponential-Backoff aus und protokolliert ihn,
- * aber der `DelayStamp` wird nie ausgewertet — alle fünf Versuche laufen in rund 30 Millisekunden
- * durch, bei berechneten Wartezeiten von zusammen 15 Minuten. Ein Storage-Ausfall, der länger als
- * einen Wimpernschlag dauert, verbraucht damit sofort alle Versuche.
+ * Ohne Zuordnung behandelt Symfony eine Nachricht synchron. Der Handler rechnet seine
+ * wachsenden Wartezeiten dann zwar aus und protokolliert sie, aber niemand wertet den
+ * `DelayStamp` aus. In der Testumgebung laufen so alle fünf Versuche in rund 30 Millisekunden durch,
+ * bei berechneten Wartezeiten von zusammen 15 Minuten; ein Speicherausfall von mehr als einem
+ * Augenblick verbraucht damit sofort alle Versuche.
  *
- * Der Fehler war von aussen unsichtbar: Der Handler ist korrekt, das Log sah plausibel aus, und
- * nur die Zeitstempel verrieten es. Deshalb ein Test auf die Zuordnung selbst.
- *
- * Shopware routet `AsyncMessageInterface` per Framework-Konfiguration auf den `async`-Transport
- * (`framework.yaml`, Abschnitt `messenger.routing`) — das Interface ist die Zuordnung.
+ * Von außen ist das unsichtbar, weil Handler und Protokoll plausibel aussehen und nur die
+ * Zeitstempel es verraten. Deshalb prüft der Test die Zuordnung selbst. Shopware leitet
+ * `AsyncMessageInterface` über `messenger.routing` in `framework.yaml` auf den Transport `async`,
+ * das Interface ist also die Zuordnung.
  */
 final class AsyncRoutingTest extends TestCase
 {
     /**
      * @return array<string, array{class-string}>
      */
-    public static function retryNachrichten(): array
+    public static function retryMessages(): array
     {
         return [
             'Mail-Anhang-Retry' => [RetryFailedMailAttachmentsMessage::class],
@@ -39,29 +38,25 @@ final class AsyncRoutingTest extends TestCase
     }
 
     /**
-     * Was: Beide Retry-Nachrichten müssen als asynchron gekennzeichnet sein.
-     * Warum: Fällt die Kennzeichnung weg, läuft der Retry wieder synchron — ohne Fehlermeldung,
-     *        ohne fehlschlagenden Test, nur mit einem Backoff, der nicht mehr wartet.
-     * Erwartet: Beide implementieren `AsyncMessageInterface`.
+     * Fällt die Kennzeichnung weg, läuft die Wiederholung synchron, ohne Fehlermeldung und mit
+     * Wartezeiten, die nicht warten.
      *
-     * @param class-string $nachricht
+     * @param class-string $message
      */
-    #[DataProvider('retryNachrichten')]
-    public function testRetryMessagesAreRoutedAsynchronously(string $nachricht): void
+    #[DataProvider('retryMessages')]
+    public function testRetryMessagesAreRoutedAsynchronously(string $message): void
     {
         self::assertTrue(
-            is_subclass_of($nachricht, AsyncMessageInterface::class),
-            $nachricht . ' muss AsyncMessageInterface implementieren — sonst behandelt Symfony '
+            is_subclass_of($message, AsyncMessageInterface::class),
+            $message . ' muss AsyncMessageInterface implementieren — sonst behandelt Symfony '
             . 'die Nachricht synchron und der DelayStamp des Handlers bleibt wirkungslos',
         );
     }
 
     /**
-     * Was: Die Nachrichten dürfen keine Kundeninhalte transportieren.
-     * Warum: Sie liegen als serialisiertes Objekt in `messenger_messages` — also in der Datenbank,
-     *        unverschlüsselt, bis ein Worker sie abholt. Ein Dateiname oder Mail-Inhalt hätte
-     *        darin nichts zu suchen. Der Handler baut beim Retry ohnehin frisch auf.
-     * Erwartet: Nur die Order-ID und Zählwerte, keine Dateinamen, Adressen oder Inhalte.
+     * Die Nachricht liegt serialisiert und unverschlüsselt in `messenger_messages`, bis ein
+     * Worker sie abholt. Sie trägt deshalb nur Bestell-ID und Versuchszähler; den Rest lädt der
+     * Handler beim Wiederholen frisch.
      */
     public function testMessagesCarryNoCustomerContent(): void
     {

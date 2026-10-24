@@ -9,9 +9,9 @@ use Ruhrcoder\RcOrderAttachment\Service\Session\PendingUpload;
 use Shopware\Core\Framework\Struct\Struct;
 
 /**
- * Datenträger für das Twig-Template auf der Confirm-Page. Bündelt die geltende
- * Konfiguration und die bereits hochgeladenen Pending-Files in einem Struct,
- * damit das Template eine einzige, klare Quelle hat.
+ * Daten für die Upload-Box auf der Bestätigungsseite: die geltende Konfiguration und die schon
+ * hochgeladenen, noch nicht verknüpften Dateien. Die Vorlage liest alles aus diesem einen Objekt
+ * und rechnet nichts selbst.
  */
 final class ConfirmPageUploadStruct extends Struct
 {
@@ -63,7 +63,7 @@ final class ConfirmPageUploadStruct extends Struct
     }
 
     /**
-     * Hilft dem `accept`-Attribut im HTML — Browser akzeptieren leading-dot Endungen.
+     * Wert für das `accept`-Attribut des Dateifelds, das Endungen mit führendem Punkt erwartet.
      */
     public function getAcceptAttribute(): string
     {

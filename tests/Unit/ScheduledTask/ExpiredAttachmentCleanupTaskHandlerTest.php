@@ -15,10 +15,9 @@ use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\System\SystemConfig\SystemConfigService;
 
 /**
- * Unit-Tests der Kontrollflüsse des Retention-Cleanups: Retention-Aus-Guard,
- * Leer-Guard, destruktiver Delete-Pfad und — sicherheitskritisch — dass ein noch
- * referenziertes (geteiltes) Media NICHT gelöscht wird. Die SQL-Korrektheit des
- * Expired-Selects bleibt einem Integration-Test vorbehalten.
+ * Prüft den Kontrollfluss der Aufbewahrungsbereinigung: abgeschaltete Aufbewahrung, leeres
+ * Ergebnis, das Löschen selbst und vor allem, dass ein noch geteiltes Medium stehen bleibt.
+ * Ob die Abfragen die richtigen Zeilen liefern, prüft `ExpiredAttachmentCleanupQueryTest`.
  */
 final class ExpiredAttachmentCleanupTaskHandlerTest extends TestCase
 {
@@ -26,10 +25,8 @@ final class ExpiredAttachmentCleanupTaskHandlerTest extends TestCase
     private const MEDIA_A = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 
     /**
-     * Was: `attachmentRetentionDays = 0` (Retention deaktiviert, „nie löschen").
-     * Warum: 0 ist die explizite „nie löschen"-Konfiguration (Audit-Pflicht) —
-     *        der Cleanup darf dann NICHTS anfassen.
-     * Erwartet: Weder DB-Query noch Delete.
+     * 0 Tage bedeutet „nie löschen", etwa wegen einer Aufbewahrungspflicht. Die Bereinigung
+     * fragt dann nicht einmal die Datenbank ab.
      */
     public function testDisabledRetentionSkipsEverything(): void
     {
@@ -43,9 +40,7 @@ final class ExpiredAttachmentCleanupTaskHandlerTest extends TestCase
     }
 
     /**
-     * Was: Kein abgelaufener Anhang.
-     * Warum: Leeres Ergebnis darf keinen Delete auslösen.
-     * Erwartet: Kein Delete.
+     * Ohne abgelaufenen Anhang darf kein Löschaufruf abgehen, auch kein leerer.
      */
     public function testEmptyResultSkipsDeletion(): void
     {
@@ -59,16 +54,13 @@ final class ExpiredAttachmentCleanupTaskHandlerTest extends TestCase
     }
 
     /**
-     * Was: Ein abgelaufener Anhang, dessen Media von keiner anderen Order
-     *      referenziert wird.
-     * Warum: DESTRUKTIVER Happy-Path — Anhang UND Media müssen gelöscht werden.
-     * Erwartet: `attachment.delete` mit dem Anhang, `media.delete` mit dem Media.
+     * Der Regelfall: Zeigt kein anderer Anhang auf das Medium, gehen Anhang und Medium.
      */
     public function testDeletesExpiredAttachmentAndUnreferencedMedia(): void
     {
         $connection = $this->createMock(Connection::class);
         $connection->method('fetchAllAssociative')->willReturn([['id' => self::ATT_1, 'media_id' => self::MEDIA_A]]);
-        // filterUnreferenced: kein referenzierendes rc_order_attachment mehr
+        // `filterUnreferenced()` findet keine Anhangszeile mehr, die auf das Medium zeigt.
         $connection->method('fetchFirstColumn')->willReturn([]);
 
         $attDeleted = null;
@@ -96,18 +88,15 @@ final class ExpiredAttachmentCleanupTaskHandlerTest extends TestCase
     }
 
     /**
-     * Was: Abgelaufener Anhang, dessen Media aber noch von einer ANDEREN Order
-     *      referenziert wird (Cart-Split-Sharing).
-     * Warum: SICHERHEITSKRITISCH — das geteilte Media darf nicht gelöscht werden,
-     *        sonst reißt der FK `ON DELETE CASCADE` den Anhang der anderen Order
-     *        mit. Der abgelaufene Anhang selbst wird trotzdem entfernt.
-     * Erwartet: `attachment.delete` ja, `media.delete` NEIN.
+     * Zeigt noch ein Anhang einer anderen Bestellung auf das Medium, bleibt es stehen. Sonst
+     * risse der Fremdschlüssel mit `ON DELETE CASCADE` jenen Anhang mit. Der abgelaufene Anhang
+     * selbst geht trotzdem.
      */
     public function testKeepsMediaStillReferencedByAnotherOrder(): void
     {
         $connection = $this->createMock(Connection::class);
         $connection->method('fetchAllAssociative')->willReturn([['id' => self::ATT_1, 'media_id' => self::MEDIA_A]]);
-        // filterUnreferenced: Media ist noch referenziert -> bleibt
+        // `filterUnreferenced()` findet das Medium noch in einer Anhangszeile.
         $connection->method('fetchFirstColumn')->willReturn([self::MEDIA_A]);
 
         $attachmentRepository = $this->createMock(EntityRepository::class);

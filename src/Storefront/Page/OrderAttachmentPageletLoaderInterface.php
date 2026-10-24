@@ -12,24 +12,23 @@ use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Symfony\Component\HttpFoundation\Request;
 
 /**
- * Liefert die Pagelet-Daten für DSGVO-relevante Storefront-Pfade.
- * Eigene Schnittstelle, damit eine spätere Caching-Decoration ohne Eingriff
- * in Subscriber oder Controller eingehängt werden kann.
+ * Liefert die Daten für die Upload-Box auf der Bestätigungsseite und die Anhangsliste im
+ * Kundenkonto. Die Schnittstelle erlaubt einen Dekorator, etwa für einen Zwischenspeicher, ohne
+ * die Subscriber anzufassen.
  */
 interface OrderAttachmentPageletLoaderInterface
 {
     /**
-     * Daten für den Upload-Slot auf der Confirm-Page. `null`, wenn das Plugin
-     * für den Sales-Channel deaktiviert ist — Subscriber überspringt dann das
-     * Anhängen der Extension.
+     * Daten für die Upload-Box auf der Bestätigungsseite. `null`, wenn das Plugin für den
+     * Verkaufskanal abgeschaltet ist; der Subscriber hängt dann nichts an die Seite.
      */
     public function loadConfirm(Request $request, SalesChannelContext $context): ?ConfirmPageUploadStruct;
 
     /**
-     * Anhänge pro Order für die Account-Order-Übersicht. Batch-Load gegen
-     * N+1 — leere Collections sind aus dem Ergebnis ausgefiltert.
+     * Anhänge je Bestellung für die Bestellübersicht im Kundenkonto, mit einer Abfrage für alle
+     * Bestellungen. Bestellungen ohne Anhang fehlen im Ergebnis.
      *
-     * @return array<string, AccountAttachmentsStruct> Key = Order-ID
+     * @return array<string, AccountAttachmentsStruct> Schlüssel ist die Bestell-ID
      */
     public function loadAccount(OrderCollection $orders, Context $context): array;
 }

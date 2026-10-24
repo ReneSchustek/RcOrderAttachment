@@ -8,11 +8,10 @@ use Shopware\Core\Framework\HttpException;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * 404 für fehlende Anhänge.
+ * 404 für einen Anhang, den es nicht gibt oder den der Anfragende nicht sehen darf.
  *
- * Wird auch als „Owner-Check fehlgeschlagen" geworfen — dieselbe Antwortzeit
- * für „nicht vorhanden" und „nicht autorisiert" verhindert IDOR-Disclosure
- * über die Antwortdauer (siehe `OrderAttachmentLoader::loadByIdForCustomer`).
+ * Beide Fälle enden in derselben Ausnahme, damit niemand durch Ausprobieren fremder IDs erfährt,
+ * welche Anhänge existieren (siehe `OrderAttachmentLoader::loadByIdForCustomer`).
  */
 final class AttachmentNotFoundException extends HttpException
 {

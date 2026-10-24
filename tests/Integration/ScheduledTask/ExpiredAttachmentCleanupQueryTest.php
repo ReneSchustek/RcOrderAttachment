@@ -11,22 +11,19 @@ use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Uuid\Uuid;
 
 /**
- * Prüft die **Auswahl-Abfrage** des Aufbewahrungs-Cleanups an echten Daten.
+ * Prüft die Auswahlabfragen der Aufbewahrungsbereinigung an einer echten Datenbank, denn die
+ * Unit-Tests sehen nur den Kontrollfluss und nicht, welche Zeilen die Abfragen liefern.
  *
- * Der Handler arbeitet zweistufig, und beide Stufen können auf ihre Weise Schaden anrichten:
- *
- *   1. `created_at < cutoff AND order_version_id = LIVE` — wählt die abgelaufenen Anhänge.
- *      Ein Fehler an der Grenze löscht Bestelldaten zu früh.
- *   2. Danach werden Medien gelöscht, auf die **keine** Anhang-Zeile mehr zeigt.
- *      Ein Fehler hier reißt Dateien mit, die eine andere Bestellung noch braucht — der Fall
- *      entsteht real bei Cart-Splits, wo mehrere Positionen dieselbe Datei teilen.
- *
- * Unit-Tests konnten davon nur den Kontrollfluss prüfen; welche Zeilen die Abfragen liefern,
- * zeigt sich erst an einer echten Datenbank.
+ * Der Handler arbeitet in zwei Stufen. Zuerst wählt `created_at < cutoff AND order_version_id = LIVE`
+ * die abgelaufenen Anhänge; ein Fehler an der Grenze löscht Bestelldaten zu früh. Danach löscht er
+ * Medien, auf die keine Anhangszeile mehr zeigt; ein Fehler dort reißt Dateien mit, die eine andere
+ * Bestellung noch braucht, etwa wenn sich nach einer Aufteilung des Warenkorbs mehrere Anhänge
+ * dieselbe Datei teilen.
  */
 final class ExpiredAttachmentCleanupQueryTest extends IntegrationTestCase
 {
-    private const AUFBEWAHRUNG_TAGE = 180;
+    // Entspricht der Vorgabe aus config.xml; die Grenzfälle 179 und 200 Tage liegen beiderseits.
+    private const RETENTION_DAYS = 180;
 
     private Connection $connection;
 
@@ -39,122 +36,109 @@ final class ExpiredAttachmentCleanupQueryTest extends IntegrationTestCase
         $this->handler = static::service(ExpiredAttachmentCleanupTaskHandler::class);
 
         static::systemConfig()
-            ->set('RcOrderAttachment.config.attachmentRetentionDays', self::AUFBEWAHRUNG_TAGE);
+            ->set('RcOrderAttachment.config.attachmentRetentionDays', self::RETENTION_DAYS);
     }
 
     /**
-     * Was: Ein Anhang jenseits der Aufbewahrungsfrist, dessen Medium sonst niemand braucht.
-     * Warum: Der Zweck der Routine — Datenminimierung nach Ablauf der Aufbewahrung.
-     * Erwartet: Anhang und Medium verschwinden beide.
+     * Der Regelfall der Datenminimierung: Nach Ablauf der Frist verschwinden Anhang und Medium,
+     * wenn niemand sonst das Medium braucht.
      */
     public function testDeletesExpiredAttachmentAndItsMedia(): void
     {
-        $medium = $this->medium();
-        $anhang = $this->anhang($medium, tageAlt: 200);
+        $media = $this->media();
+        $attachment = $this->attachment($media, daysOld: 200);
 
         $this->handler->run();
 
-        self::assertFalse($this->anhangExistiert($anhang), 'der abgelaufene Anhang muss weg');
-        self::assertFalse($this->mediumExistiert($medium), 'das nun unreferenzierte Medium ebenso');
+        self::assertFalse($this->attachmentExists($attachment), 'der abgelaufene Anhang muss weg');
+        self::assertFalse($this->mediaExists($media), 'das nun unreferenzierte Medium ebenso');
     }
 
     /**
-     * Was: Die Grenze — ein Anhang knapp jenseits, einer knapp diesseits der Frist.
-     * Warum: Ein Fehler um einen Tag ist in der Abfrage nicht zu sehen und löscht Bestelldaten
-     *        zu früh. Nur beidseitig geprüft steht fest, wo geschnitten wird.
-     * Erwartet: der ältere weg, der jüngere bleibt.
+     * Ein Fehler um einen Tag ist in der Abfrage nicht zu sehen und löscht Bestelldaten zu früh.
+     * Erst ein Anhang auf jeder Seite der Frist legt fest, wo geschnitten wird.
      */
     public function testCutoffCutsOnTheRightSide(): void
     {
-        $altesMedium = $this->medium();
-        $altesAnhang = $this->anhang($altesMedium, tageAlt: 200);
+        $oldMedia = $this->media();
+        $oldAttachment = $this->attachment($oldMedia, daysOld: 200);
 
-        $jungesMedium = $this->medium();
-        $jungerAnhang = $this->anhang($jungesMedium, tageAlt: 179);
+        $youngMedia = $this->media();
+        $youngAttachment = $this->attachment($youngMedia, daysOld: 179);
 
         $this->handler->run();
 
-        self::assertFalse($this->anhangExistiert($altesAnhang), 'älter als 180 Tage muss weg');
-        self::assertTrue($this->anhangExistiert($jungerAnhang), 'jünger als 180 Tage muss bleiben');
-        self::assertTrue($this->mediumExistiert($jungesMedium), 'und sein Medium auch');
+        self::assertFalse($this->attachmentExists($oldAttachment), 'älter als 180 Tage muss weg');
+        self::assertTrue($this->attachmentExists($youngAttachment), 'jünger als 180 Tage muss bleiben');
+        self::assertTrue($this->mediaExists($youngMedia), 'und sein Medium auch');
     }
 
     /**
-     * Was: Ein Medium, das sich zwei Anhänge teilen — einer abgelaufen, einer nicht.
-     * Warum: **Der teuerste Fehler, den diese Routine machen könnte.** Bei einem Cart-Split zeigen
-     *        mehrere Positionen auf dieselbe hochgeladene Datei. Löschte der Handler das Medium,
-     *        sobald *ein* Anhang abläuft, verlöre die noch gültige Bestellung ihre Datei — und der
-     *        Fremdschlüssel `ON DELETE CASCADE` risse gleich auch deren Anhang-Zeile mit.
-     * Erwartet: Der abgelaufene Anhang geht, das Medium und der junge Anhang bleiben.
+     * Der teuerste Fehler, den die Routine machen kann: Teilen sich zwei Anhänge ein Medium und
+     * löscht der Handler es, sobald einer abläuft, verliert die noch gültige Bestellung ihre Datei.
+     * Der Fremdschlüssel mit `ON DELETE CASCADE` risse dabei auch deren Anhangszeile mit.
      */
     public function testKeepsSharedMediaWhileAnotherAttachmentStillNeedsIt(): void
     {
-        $geteiltesMedium = $this->medium();
-        $abgelaufen = $this->anhang($geteiltesMedium, tageAlt: 200);
-        $nochGueltig = $this->anhang($geteiltesMedium, tageAlt: 10);
+        $sharedMedia = $this->media();
+        $expired = $this->attachment($sharedMedia, daysOld: 200);
+        $stillValid = $this->attachment($sharedMedia, daysOld: 10);
 
         $this->handler->run();
 
-        self::assertFalse($this->anhangExistiert($abgelaufen), 'der abgelaufene Anhang geht');
+        self::assertFalse($this->attachmentExists($expired), 'der abgelaufene Anhang geht');
         self::assertTrue(
-            $this->mediumExistiert($geteiltesMedium),
+            $this->mediaExists($sharedMedia),
             'das geteilte Medium muss bleiben, solange eine gültige Bestellung darauf zeigt',
         );
         self::assertTrue(
-            $this->anhangExistiert($nochGueltig),
+            $this->attachmentExists($stillValid),
             'und damit auch der Anhang der anderen Bestellung — sonst hätte der Cascade zugeschlagen',
         );
     }
 
     /**
-     * Was: Aufbewahrung auf 0 gestellt.
-     * Warum: Bei den Anhängen bedeutet 0 ausdrücklich „nie löschen" (`attachmentRetentionEnabled()`).
-     *        Das ist der Gegensatz zur Waisen-Frist, die eine Untergrenze von einer Stunde hat —
-     *        wer beide verwechselt, löscht entweder zu viel oder nie.
-     * Erwartet: Auch ein uralter Anhang bleibt.
+     * Bei den Anhängen bedeutet 0 Tage „nie löschen" (`attachmentRetentionEnabled()`), bei der
+     * Waisenfrist dagegen hebt der Konfigurationsleser 0 auf eine Stunde an. Wer beides
+     * verwechselt, löscht entweder zu viel oder nie.
      */
     public function testDoesNothingWhenRetentionIsDisabled(): void
     {
         static::systemConfig()
             ->set('RcOrderAttachment.config.attachmentRetentionDays', 0);
 
-        $medium = $this->medium();
-        $anhang = $this->anhang($medium, tageAlt: 3000);
+        $media = $this->media();
+        $attachment = $this->attachment($media, daysOld: 3000);
 
         $this->handler->run();
 
-        self::assertTrue($this->anhangExistiert($anhang), '0 Tage heißt: nie löschen');
-        self::assertTrue($this->mediumExistiert($medium));
+        self::assertTrue($this->attachmentExists($attachment), '0 Tage heißt: nie löschen');
+        self::assertTrue($this->mediaExists($media));
     }
 
     /**
-     * Was: Ein abgelaufener Anhang, der an einer **anderen Order-Version** hängt.
-     * Warum: Shopware führt Bestellungen versioniert; Entwürfe aus Admin-Bearbeitungen liegen unter
-     *        einer eigenen Version. Die Abfrage filtert auf `order_version_id = LIVE`. Ohne den
-     *        Filter würde die Aufräumung in Versionsstände greifen, die gar nicht die
-     *        ausgelieferte Bestellung sind.
-     * Erwartet: bleibt unangetastet.
+     * Shopware führt Bestellungen versioniert, Entwürfe aus der Bearbeitung in der Verwaltung
+     * liegen unter einer eigenen Version. Ohne den Filter `order_version_id = LIVE` griffe die
+     * Bereinigung in Stände, die gar nicht die ausgelieferte Bestellung sind.
      */
     public function testIgnoresAttachmentsOfNonLiveOrderVersions(): void
     {
         $orderId = $this->createTestOrder();
-        $entwurfsVersion = static::repository('order.repository')
+        $draftVersion = static::repository('order.repository')
             ->createVersion($orderId, $this->context);
 
-        $medium = $this->medium();
-        $anhang = $this->anhangRoh($orderId, $entwurfsVersion, $medium, tageAlt: 200);
+        $media = $this->media();
+        $attachment = $this->attachmentRaw($orderId, $draftVersion, $media, daysOld: 200);
 
         $this->handler->run();
 
         self::assertTrue(
-            $this->anhangExistiert($anhang),
+            $this->attachmentExists($attachment),
             'nur die Live-Version der Bestellung wird aufgeräumt',
         );
     }
 
-    // --- Hilfen ---------------------------------------------------------
-
-    private function medium(): string
+    private function media(): string
     {
         $id = Uuid::randomHex();
         static::repository('media.repository')
@@ -166,12 +150,12 @@ final class ExpiredAttachmentCleanupQueryTest extends IntegrationTestCase
     /**
      * Legt einen Anhang an einer frischen Bestellung an und datiert ihn zurück.
      */
-    private function anhang(string $mediaId, int $tageAlt): string
+    private function attachment(string $mediaId, int $daysOld): string
     {
-        return $this->anhangRoh($this->createTestOrder(), Defaults::LIVE_VERSION, $mediaId, $tageAlt);
+        return $this->attachmentRaw($this->createTestOrder(), Defaults::LIVE_VERSION, $mediaId, $daysOld);
     }
 
-    private function anhangRoh(string $orderId, string $versionId, string $mediaId, int $tageAlt): string
+    private function attachmentRaw(string $orderId, string $versionId, string $mediaId, int $daysOld): string
     {
         $id = Uuid::randomHex();
         $this->connection->insert('rc_order_attachment', [
@@ -185,17 +169,17 @@ final class ExpiredAttachmentCleanupQueryTest extends IntegrationTestCase
             'created_at' => '2020-01-01 00:00:00.000',
         ]);
 
-        // Rückdatierung per SQL: Die Spalte wird beim Einfügen gesetzt, eine Vergangenheit kennt
-        // die DAL nicht — und der Handler schneidet genau an dieser Spalte.
+        // Das Alter wird relativ zur aktuellen Zeit gesetzt, weil der Handler seine Grenze ebenfalls
+        // von jetzt aus rechnet. Der feste Wert beim Einfügen füllt nur die Pflichtspalte.
         $this->connection->executeStatement(
             'UPDATE `rc_order_attachment` SET created_at = DATE_SUB(UTC_TIMESTAMP(), INTERVAL :tage DAY) WHERE id = :id',
-            ['tage' => $tageAlt, 'id' => Uuid::fromHexToBytes($id)],
+            ['tage' => $daysOld, 'id' => Uuid::fromHexToBytes($id)],
         );
 
         return $id;
     }
 
-    private function anhangExistiert(string $id): bool
+    private function attachmentExists(string $id): bool
     {
         return (bool) $this->connection->fetchOne(
             'SELECT 1 FROM `rc_order_attachment` WHERE id = :id',
@@ -203,7 +187,7 @@ final class ExpiredAttachmentCleanupQueryTest extends IntegrationTestCase
         );
     }
 
-    private function mediumExistiert(string $id): bool
+    private function mediaExists(string $id): bool
     {
         return (bool) $this->connection->fetchOne(
             'SELECT 1 FROM `media` WHERE id = :id',

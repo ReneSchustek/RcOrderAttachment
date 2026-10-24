@@ -13,13 +13,13 @@ use Shopware\Core\System\SystemConfig\SystemConfigService;
 /**
  * Typisierte Zugriffe auf den Test-Container.
  *
- * `ContainerInterface::get()` gibt `object` zurück. Jeder Aufruf darauf ist damit
- * ungeprüft — ein falscher Dienst-Schlüssel fällt erst zur Laufzeit auf, und die
- * statische Analyse kann nichts davon sehen. Diese drei Helfer prüfen einmal und
- * geben den erwarteten Typ zurück.
+ * `ContainerInterface::get()` gibt `object` zurück. Ein falscher Dienstschlüssel fällt
+ * damit erst zur Laufzeit auf, und die statische Analyse sieht nichts davon. Die Helfer
+ * prüfen den Typ einmal und geben ihn typisiert zurück.
  *
- * Liegt bewusst in einem Trait statt in der Basisklasse: nicht alle Integration-Tests
- * erben von `IntegrationTestCase`, einige binden nur das Shopware-Verhalten ein.
+ * Die Helfer liegen in einem Trait und nicht in der Basisklasse, weil nicht alle
+ * Integrationstests von `IntegrationTestCase` erben; der Migrationstest etwa bindet nur
+ * `KernelTestBehaviour` ein.
  */
 trait ContainerAccessTrait
 {

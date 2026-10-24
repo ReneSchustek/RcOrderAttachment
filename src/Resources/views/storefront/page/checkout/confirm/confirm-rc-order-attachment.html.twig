@@ -2,10 +2,10 @@
     {% set config = rcAttachment.config %}
     {% set pending = rcAttachment.pendingUploads %}
 
-    {# Die Remove-Route erzwingt `token` = 32 Hex-Zeichen (`requirements` im Controller).
-       Ein sprechender Platzhalter wie `__TOKEN__` bringt den URL-Generator zum Werfen
-       ("must match [a-f0-9]{32}") und reißt die gesamte Confirm-Page mit HTTP 500.
-       Also einen regex-konformen Platzhalter erzeugen und ihn im JS ersetzen. #}
+    {# Die Route zum Entfernen verlangt für `token` 32 Hexziffern (`requirements` im Controller).
+       Ein sprechender Platzhalter wie `__TOKEN__` brächte den URL-Generator zum Werfen und
+       risse die ganze Bestätigungsseite mit HTTP 500 ab. Der Platzhalter erfüllt deshalb das
+       Muster, und das Skript tauscht ihn gegen den echten Token. #}
     {% set removeTokenPlaceholder = '00000000000000000000000000000000' %}
 
     <div class="card checkout-card rc-order-attachment"
@@ -22,6 +22,8 @@
          data-text-no-files="{{ 'rcOrderAttachment.status.noFiles'|trans|striptags }}"
          data-text-generic-error="{{ 'rcOrderAttachment.error.generic'|trans|striptags }}"
          data-text-progress="{{ 'rcOrderAttachment.field.progress'|trans|striptags }}"
+         {# Jeder Prüfcode, den der Server liefern kann, braucht hier seinen Text; fehlt einer,
+            zeigt das Skript den Code selbst an. #}
          data-error-messages="{{ {
              pluginDisabled: 'rcOrderAttachment.error.pluginDisabled'|trans|striptags,
              emptyUpload: 'rcOrderAttachment.error.emptyUpload'|trans|striptags,
@@ -34,7 +36,8 @@
              totalSizeExceeded: 'rcOrderAttachment.error.totalSizeExceeded'|trans|striptags,
              fileCountExceeded: 'rcOrderAttachment.error.fileCountExceeded'|trans|striptags,
              dangerousContentDetected: 'rcOrderAttachment.error.dangerousContentDetected'|trans|striptags,
-             rateLimitExceeded: 'rcOrderAttachment.error.rateLimitExceeded'|trans|striptags
+             rateLimitExceeded: 'rcOrderAttachment.error.rateLimitExceeded'|trans|striptags,
+             sessionUnavailable: 'rcOrderAttachment.error.sessionUnavailable'|trans|striptags
          }|json_encode }}">
 
         <div class="card-body">

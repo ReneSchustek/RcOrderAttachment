@@ -8,23 +8,26 @@ use Ruhrcoder\RcOrderAttachment\Service\Validation\DangerousContentValidator;
 use Shopware\Core\System\SystemConfig\SystemConfigService;
 
 /**
- * Liest die SystemConfig-Werte des Plugins und liefert ein bereinigtes {@see PluginConfig}.
+ * Liest die Konfigurationswerte des Plugins und liefert ein bereinigtes {@see PluginConfig}.
  *
- * Bereinigung erfolgt hier (zentral), nicht in jedem Caller:
- * - Numerische Limits werden geklemmt (lower/upper bound)
- * - Endungs-Whitelist wird normalisiert (lowercase, getrimmt, leer entfernt)
- * - Defensive Defaults bei fehlenden/falsch-typisierten Werten
+ * Die Bereinigung sitzt an dieser einen Stelle statt in jedem Aufrufer. Zahlen werden in ihre
+ * Grenzen geklemmt, die Endungsliste kleingeschrieben, beschnitten und von leeren Einträgen
+ * befreit, und fehlende Werte fallen auf {@see DEFAULTS} zurück.
  */
 final class PluginConfigProvider
 {
     public const DOMAIN = 'RcOrderAttachment.config.';
 
+    // Rückfallwerte, wenn ein Schlüssel fehlt. Sie entsprechen den Vorgaben in config.xml und
+    // greifen etwa vor dem ersten Speichern der Konfiguration in einem neuen Verkaufskanal.
     private const DEFAULTS = [
         'enabled' => true,
         'required' => false,
         'maxFiles' => 5,
-        // Smartphone-tauglich: iPhone-Fotos liegen oft bei 3–8 MB, ProRAW über 25 MB.
+        // 10 MB reichen für Smartphone-Fotos, die meist bei 3 bis 8 MB liegen; ProRAW-Aufnahmen über
+        // 25 MB fallen bewusst heraus.
         'maxFileSizeKb' => 10240,
+        // 40 MB lassen vier volle Fotos zu; mehr Dateien gehen nur, wenn sie kleiner sind.
         'maxTotalSizeKb' => 40960,
         'allowedExtensions' => 'pdf,jpg,jpeg,png,webp,heic,heif',
         'orphanRetentionHours' => 24,
@@ -90,10 +93,8 @@ final class PluginConfigProvider
             $cleaned[$part] = $part;
         }
 
-        // Fail-closed: liefert die Admin-Eingabe (nicht-leer) ausschließlich
-        // ungültige Tokens, würde eine leere Whitelist „an ALLE Order-Mails
-        // anhängen" bedeuten (Mail-Inflation). Stattdessen auf den sicheren
-        // Default zurückfallen.
+        // Besteht die Eingabe nur aus ungültigen Namen, ergäbe sich eine leere Liste, und die hieße
+        // „an alle Bestellmails anhängen". Dann gilt lieber die enge Vorgabe.
         if ($cleaned === []) {
             return [self::DEFAULTS['mailTemplateWhitelist']];
         }
@@ -143,17 +144,16 @@ final class PluginConfigProvider
         $cleaned = [];
         foreach ($parts as $part) {
             $part = trim($part, ". \t\n\r\0\x0B");
-            // Mindestlänge 3: alle sinnvollen Datei-Endungen sind ≥ 3 Zeichen
-            // (`pdf`, `jpg`, `png`, ...). Endungen mit 1–2 Zeichen (`js`, `pl`,
-            // `rb`) sind ohnehin durch die hart kodierte Blacklist im
-            // {@see DangerousContentValidator} blockiert.
+            // Mindestens drei Zeichen, weil alle vorgesehenen Formate so lang sind (`pdf`, `jpg`,
+            // `png`). Kürzere Endungen wie `js`, `sh`, `py` oder `pl` sind Skripte und fallen so
+            // schon hier heraus; eine erwünschte zweistellige Endung wie `7z` ließe sich allerdings
+            // auch nicht freischalten.
             if ($part === '' || preg_match('/^[a-z0-9]{3,16}$/', $part) !== 1) {
                 continue;
             }
-            // Blacklist an der Quelle: gefährliche Endungen (php, svg, html, …)
-            // werden hier verworfen, damit sie nicht über den
-            // MediaWhitelistSubscriber in die Core-Media-Whitelist gelangen.
-            // Der DangerousContentValidator prüft zusätzlich pro Datei.
+            // Gefährliche Endungen (php, svg, html) fallen schon hier heraus, damit sie nicht über den
+            // MediaWhitelistSubscriber in die Endungsliste des Kerns gelangen. Der
+            // DangerousContentValidator prüft zusätzlich jede einzelne Datei.
             if (\in_array($part, DangerousContentValidator::FORBIDDEN_EXTENSIONS, true)) {
                 continue;
             }

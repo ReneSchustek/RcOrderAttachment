@@ -7,9 +7,9 @@ namespace Ruhrcoder\RcOrderAttachment\Core\Content\OrderAttachment;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityCollection;
 
 /**
- * Typed DAL-Collection für {@see OrderAttachmentEntity}. Bündelt
- * Service-übergreifend genutzte Hilfsabfragen (IDs, Filter, Summen), damit
- * Konsumenten nicht jedes Mal über `getElements()` schleifen müssen.
+ * Typisierte Sammlung von {@see OrderAttachmentEntity}. Sie bündelt die Abfragen, die mehrere
+ * Dienste brauchen (IDs, Filter, Summen), damit nicht jeder Aufrufer selbst über
+ * `getElements()` läuft.
  *
  * @extends EntityCollection<OrderAttachmentEntity>
  */

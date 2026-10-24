@@ -22,8 +22,9 @@ use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Stamp\DelayStamp;
 
 /**
- * Unit-Tests für den idempotenten Attach-Retry-Handler.
- * Pattern: echter {@see OrderAttachmentLoader} mit gemocktem Repository.
+ * Prüft den Handler, der nach einem Fehler beim Bestellabschluss die Uploads nachträglich mit
+ * der Bestellung verknüpft. Er muss wiederholbar sein, ohne Doppel anzulegen, und darf nicht
+ * endlos laufen. Der {@see OrderAttachmentLoader} ist echt, gemockt ist nur das Repository.
  */
 final class RetryOrderAttachmentLinkHandlerTest extends TestCase
 {
@@ -46,11 +47,8 @@ final class RetryOrderAttachmentLinkHandlerTest extends TestCase
     }
 
     /**
-     * Was: Ein Media der Nachricht ist bereits verknüpft, das andere nicht.
-     * Warum: Idempotenz — ein Retry nach Teil-Erfolg darf keine Doppel-Zeile für
-     *        das bereits verknüpfte Media anlegen.
-     * Erwartet: Genau EIN `attach` (nur für das noch nicht verknüpfte Media),
-     *           kein Re-Dispatch.
+     * Nach einem Teilerfolg darf die Wiederholung für das schon verknüpfte Medium keine zweite
+     * Zeile anlegen, sondern nur das fehlende nachtragen.
      */
     public function testSkipsAlreadyLinkedAndAttachesOnlyMissing(): void
     {
@@ -72,9 +70,8 @@ final class RetryOrderAttachmentLinkHandlerTest extends TestCase
     }
 
     /**
-     * Was: Attach scheitert weiterhin bei attempt = 1.
-     * Warum: Der Handler zählt selbst und plant mit Backoff neu ein.
-     * Erwartet: Re-Dispatch mit attempt = 2 und 60 s DelayStamp.
+     * Der Handler zählt selbst und plant mit wachsender Wartezeit neu ein; der erste
+     * Wiederholungsschritt wartet eine Minute.
      */
     public function testRedispatchesWithBackoffOnPersistentFailure(): void
     {
@@ -103,10 +100,8 @@ final class RetryOrderAttachmentLinkHandlerTest extends TestCase
     }
 
     /**
-     * Was: Attach scheitert bei attempt = MAX_ATTEMPTS.
-     * Warum: Endlos-Schleife verhindern — final loggen, damit der Betrieb
-     *        manuell nacharbeiten kann.
-     * Erwartet: Kein weiterer Dispatch.
+     * Beim letzten Versuch endet die Kette, damit sie nicht endlos läuft. Der Betrieb arbeitet
+     * dann anhand des Protokolls von Hand nach.
      */
     public function testStopsAtMaxAttempts(): void
     {

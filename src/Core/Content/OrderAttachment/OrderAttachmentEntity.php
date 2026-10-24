@@ -10,8 +10,8 @@ use Shopware\Core\Framework\DataAbstractionLayer\Entity;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityIdTrait;
 
 /**
- * DAL-Entity für die Bindung Order ↔ Customer-Upload. Anämisch — Geschäftslogik
- * liegt in den Services, hier nur die Felder, die in `rc_order_attachment` liegen.
+ * DAL-Entität für die Bindung einer Bestellung an einen Upload des Kunden. Sie trägt nur die
+ * Spalten aus `rc_order_attachment`; die Geschäftslogik liegt in den Diensten.
  */
 final class OrderAttachmentEntity extends Entity
 {

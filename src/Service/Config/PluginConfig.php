@@ -5,20 +5,25 @@ declare(strict_types=1);
 namespace Ruhrcoder\RcOrderAttachment\Service\Config;
 
 /**
- * Immutables, typsicheres Abbild der Plugin-Konfiguration.
+ * Unveränderliches, typisiertes Abbild der Plugin-Konfiguration.
  *
- * Erzeugt wird das Objekt ausschließlich vom {@see PluginConfigProvider} —
- * dort sitzt auch die Bereinigung (Clamping, Whitelist-Parsing).
+ * Erzeugt wird es nur vom {@see PluginConfigProvider}, der die Werte auch bereinigt (Grenzen,
+ * Endungslisten). Die Dienste verlassen sich darauf und prüfen nicht selbst nach.
  */
 final readonly class PluginConfig
 {
+    // Harte Obergrenzen, die auch eine Fehleingabe in der Verwaltung nicht übersteigt. Sie liegen
+    // weit über dem Bedarf einer Bestellung mit Zeichnungen und Fotos (Standard 5 Dateien,
+    // 10 MB, 40 MB) und begrenzen, wie viel Speicher eine einzelne Sitzung belegen kann.
+    // Für Dateien dieser Größe müssen zudem `upload_max_filesize` und `post_max_size` von PHP
+    // hoch genug stehen.
     public const ABSOLUTE_MAX_FILES = 50;
     public const ABSOLUTE_MAX_FILE_SIZE_KB = 102400; // 100 MB
     public const ABSOLUTE_MAX_TOTAL_SIZE_KB = 512000; // 500 MB
 
     /**
      * @param list<string> $allowedExtensions kleingeschrieben, ohne Punkt
-     * @param list<string> $mailTemplateWhitelist technische Mail-Template-Namen; leer = an alle Order-Mails
+     * @param list<string> $mailTemplateWhitelist technische Namen der Mailvorlagen; eine leere Liste hängt an alle Bestellmails an
      */
     public function __construct(
         public bool $enabled,
@@ -43,12 +48,10 @@ final readonly class PluginConfig
     }
 
     /**
-     * Prüft mehrere Kandidaten gegen die Whitelist — in der Praxis den
-     * `technicalName` des Mail-Template-Types (`order_confirmation_mail`) und
-     * als Zweitkandidat den Flow-Event-Namen (`checkout.order.placed`). Beide
-     * Schreibweisen sind im Admin-Feld zulässig; ein Treffer genügt.
-     *
-     * Leere Whitelist bedeutet „an alle Order-Mails anhängen".
+     * Prüft mehrere Kandidaten gegen die erlaubten Vorlagen, in der Praxis den `technicalName` des
+     * Mailvorlagentyps (`order_confirmation_mail`) und den Namen des Flow-Ereignisses
+     * (`checkout.order.placed`). Beide Schreibweisen sind im Feld der Verwaltung zulässig, ein
+     * Treffer genügt. Eine leere Liste erlaubt jede Bestellmail.
      */
     public function isMailTemplateAllowed(?string ...$candidates): bool
     {

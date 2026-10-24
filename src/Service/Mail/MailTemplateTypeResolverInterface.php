@@ -7,15 +7,15 @@ namespace Ruhrcoder\RcOrderAttachment\Service\Mail;
 use Shopware\Core\Framework\Context;
 
 /**
- * Löst eine `mailTemplateId` zum `technicalName` ihres Mail-Template-Types auf.
- * Eigene Schnittstelle, damit der Mail-Subscriber ohne DAL-Boundary testbar
- * bleibt und eine Caching-Decoration ohne Eingriff in den Caller möglich ist.
+ * Ermittelt zu einer `mailTemplateId` den `technicalName` ihres Vorlagentyps. Die Schnittstelle
+ * lässt den Mail-Subscriber ohne Datenbank testen und erlaubt einen Dekorator, ohne den Aufrufer
+ * anzufassen.
  */
 interface MailTemplateTypeResolverInterface
 {
     /**
-     * Liefert `null`, wenn die ID fehlt, ungültig ist, kein Template existiert
-     * oder der Lookup fehlschlägt (fail-closed).
+     * Liefert `null`, wenn die ID fehlt oder ungültig ist, keine Vorlage existiert oder die Abfrage
+     * scheitert. Der Aufrufer hängt in diesem Fall im Zweifel nichts an.
      */
     public function resolveTechnicalName(?string $mailTemplateId, Context $context): ?string;
 }

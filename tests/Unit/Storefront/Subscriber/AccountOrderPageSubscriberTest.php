@@ -19,19 +19,15 @@ use Shopware\Storefront\Page\Account\Order\AccountOrderPage;
 use Shopware\Storefront\Page\Account\Order\AccountOrderPageLoadedEvent;
 
 /**
- * Unit-Tests für den Event-Adapter zur Account-Order-Page. Verifiziert, dass der
- * Subscriber das richtige Event abonniert und die Pagelet-Daten vom Loader
- * korrekt pro Order an die Twig-Extension hängt (DSGVO Art. 15).
+ * Prüft den Subscriber der Bestellübersicht im Kundenkonto: Er hört auf das richtige Ereignis und
+ * hängt die Anhänge je Bestellung an. Über diese Seite sieht der Kunde seine Dateien ein
+ * (Auskunft nach Art. 15 DSGVO).
  */
 final class AccountOrderPageSubscriberTest extends TestCase
 {
     /**
-     * Was: Statische Event-Subscription des Subscribers.
-     * Warum: Verbindlicher Vertrag mit dem Shopware-EventDispatcher — falsche
-     *        Event-Klasse oder Methode würde dafür sorgen, dass der Subscriber
-     *        nie aufgerufen wird und Kunden ihre Anhänge nicht sehen.
-     * Erwartet: `AccountOrderPageLoadedEvent` ist registriert auf
-     *           `onAccountOrderPageLoaded`.
+     * Mit falscher Ereignisklasse oder falschem Methodennamen liefe der Subscriber nie, und kein
+     * Fehler wiese darauf hin.
      */
     public function testSubscribesToAccountOrderPageLoadedEvent(): void
     {
@@ -42,11 +38,8 @@ final class AccountOrderPageSubscriberTest extends TestCase
     }
 
     /**
-     * Was: Loader liefert leeres Ergebnis-Array (keine Anhänge gefunden).
-     * Warum: Häufiger Fall: Kunden ohne Anhänge — der Subscriber darf KEINE
-     *        Extension hängen, sonst rendert das Template eine leere
-     *        „Anhänge"-Sektion.
-     * Erwartet: Order hat keine `rcOrderAttachmentList`-Extension.
+     * Der häufige Fall ohne Anhänge: Hinge trotzdem eine Erweiterung an, zeigte das Template einen
+     * leeren Anhangsbereich.
      */
     public function testSkipsWhenLoaderReturnsNothing(): void
     {
@@ -61,10 +54,7 @@ final class AccountOrderPageSubscriberTest extends TestCase
     }
 
     /**
-     * Was: Loader liefert Treffer nur für `order-a`; `order-b` ist nicht im Ergebnis.
-     * Warum: Selektives Anhängen verhindert leere Sektionen bei Orders ohne
-     *        Anhänge (UX) und reduziert Render-Aufwand.
-     * Erwartet: `order-a` bekommt das Struct, `order-b` bleibt ohne Extension.
+     * Nur Bestellungen mit Treffer bekommen den Struct, die übrigen bleiben ohne leeren Bereich.
      */
     public function testAttachesExtensionForMatchingOrdersOnly(): void
     {

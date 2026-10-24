@@ -1,7 +1,7 @@
 name: Sicherheit
 
 # Wöchentliches Abhängigkeits-Audit — unabhängig von Push und Pull Request.
-# Ein fertiges Plugin wird nicht mehr gepusht, Advisories erscheinen trotzdem.
+# An einem fertigen Plugin kommt selten ein Push an, Advisories erscheinen trotzdem.
 
 on:
   schedule:

@@ -15,28 +15,25 @@ use Symfony\Contracts\Service\ResetInterface;
 use Throwable;
 
 /**
- * Löst die `mailTemplateId` einer ausgehenden Mail zum `technicalName` ihres
- * Mail-Template-Types auf (z. B. `order_confirmation_mail`).
+ * Ermittelt zur `mailTemplateId` einer ausgehenden Mail den `technicalName` ihres Vorlagentyps,
+ * etwa `order_confirmation_mail`.
  *
- * Warum es diesen Service braucht:
- *   `MailBeforeValidateEvent::getTemplateData()` enthält in Shopware 6.7 KEINEN
- *   `mailTemplate`-Key — `SendMailAction` baut die Template-Daten als
- *   `['eventName' => $flow->getName(), ...$flow->data()]`. Der einzige Bezug zum
- *   konkreten Mail-Template steckt in `getData()['templateId']`. Ohne Auflösung
- *   könnte eine Whitelist nur gegen Flow-Event-Namen (`checkout.order.placed`)
- *   prüfen, nie gegen Template-Type-Namen.
+ * `MailBeforeValidateEvent::getTemplateData()` enthält in Shopware 6.7 keinen Schlüssel
+ * `mailTemplate`, weil `SendMailAction` die Vorlagendaten als
+ * `['eventName' => $flow->getName(), ...$flow->data()]` baut. Der einzige Bezug zur konkreten
+ * Vorlage steckt in `getData()['templateId']`. Ohne diese Auflösung ließe sich die Liste erlaubter
+ * Vorlagen nur gegen Ereignisnamen wie `checkout.order.placed` prüfen.
  *
- * Fail-closed: Kann der Name nicht aufgelöst werden, liefert der Service `null`.
- * Der Aufrufer entscheidet dann anhand seiner übrigen Kandidaten — im Zweifel
- * wird NICHT angehängt, statt Anhänge an eine unbekannte Mail zu hängen.
+ * Lässt sich der Name nicht ermitteln, liefert der Dienst `null`. Der Aufrufer entscheidet dann
+ * anhand seiner übrigen Kandidaten und hängt im Zweifel nichts an.
  *
- * Worker-Mode: Der Lookup-Cache ist Instance-State und wird über
- * {@see ResetInterface} pro Request geleert.
+ * Der Zwischenspeicher lebt in der Instanz. Im Worker-Betrieb leert ihn {@see ResetInterface}
+ * nach jeder Anfrage, damit keine Zuordnung über Anfragen hinweg stehen bleibt.
  */
 final class MailTemplateTypeResolver implements MailTemplateTypeResolverInterface, ResetInterface
 {
     /**
-     * @var array<string, string|null> Key = mailTemplateId, Value = technicalName oder null
+     * @var array<string, string|null> Schlüssel ist die mailTemplateId, Wert der technicalName oder null
      */
     private array $cache = [];
 
@@ -60,10 +57,9 @@ final class MailTemplateTypeResolver implements MailTemplateTypeResolverInterfac
         }
 
         try {
-            // Nur das ECHTE Ergebnis (gefunden / nicht gefunden = null) cachen.
-            // Ein transienter Lookup-Fehler darf nicht als endgültiges `null`
-            // eingefroren werden — sonst blieben für den Rest des Requests bzw.
-            // der Worker-Nachricht alle Anhänge aus, obwohl nur ein DB-Hiccup vorlag.
+            // Gespeichert wird nur ein echtes Ergebnis, auch „nicht gefunden". Ein vorübergehender
+            // Fehler darf nicht als `null` stehen bleiben, sonst fehlten für den Rest der Anfrage
+            // oder der Worker-Nachricht alle Anhänge, obwohl die Datenbank nur kurz hakte.
             return $this->cache[$mailTemplateId] = $this->lookup($mailTemplateId, $context);
         } catch (Throwable $exception) {
             $this->logger->warning('rc_order_attachment.mail.template_type_lookup_failed', [
@@ -87,9 +83,9 @@ final class MailTemplateTypeResolver implements MailTemplateTypeResolverInterfac
         $criteria->addAssociation('mailTemplateType');
         $criteria->setLimit(1);
 
-        // Scope-Wechsel: der Mail-Versand läuft je nach Flow-Kontext auch mit
-        // Sales-Channel-Scope, `mail_template` ist dort nicht lesbar. Fehler
-        // propagieren bewusst an den Aufrufer, damit sie NICHT gecacht werden.
+        // Je nach Flow läuft der Mailversand im Verkaufskanal-Kontext, in dem `mail_template` nicht
+        // lesbar ist. Fehler laufen ungefangen zum Aufrufer durch, damit sie nicht im
+        // Zwischenspeicher landen.
         $template = $context->scope(
             Context::SYSTEM_SCOPE,
             fn (Context $systemContext): ?MailTemplateEntity => $this->firstTemplate($criteria, $systemContext),
@@ -106,7 +102,7 @@ final class MailTemplateTypeResolver implements MailTemplateTypeResolverInterfac
 
     private function firstTemplate(Criteria $criteria, Context $context): ?MailTemplateEntity
     {
-        $template = $this->mailTemplateRepository->search($criteria, $context)->first();
+        $template = $this->mailTemplateRepository->search($criteria, $context)->getEntities()->first();
 
         return $template instanceof MailTemplateEntity ? $template : null;
     }

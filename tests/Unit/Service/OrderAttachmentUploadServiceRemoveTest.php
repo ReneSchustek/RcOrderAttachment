@@ -35,13 +35,11 @@ use Symfony\Component\HttpFoundation\Session\Session;
 use Symfony\Component\HttpFoundation\Session\Storage\MockArraySessionStorage;
 
 /**
- * Unit-Tests für {@see OrderAttachmentUploadService::remove()}.
+ * Prüft {@see OrderAttachmentUploadService::remove()}, das Entfernen eines Uploads vor dem
+ * Absenden. Der Fremdschlüssel `fk.rc_order_attachment.media_id` steht auf `ON DELETE CASCADE`,
+ * jedes gelöschte Medium reißt also den Anhang jeder Bestellung mit, die darauf zeigt.
  *
- * Der Remove-Pfad ist sicherheitskritisch: Der Fremdschlüssel
- * `fk.rc_order_attachment.media_id` steht auf `ON DELETE CASCADE`. Ein Media-Delete
- * reißt den Anhang jeder Bestellung mit, die darauf zeigt.
- *
- * Pattern: echte Instanzen mit gemockten Shopware-Boundaries.
+ * Die Plugin-Klassen sind echt, gemockt sind nur die Grenzen zu Shopware.
  */
 final class OrderAttachmentUploadServiceRemoveTest extends TestCase
 {
@@ -49,16 +47,14 @@ final class OrderAttachmentUploadServiceRemoveTest extends TestCase
 
     private const MEDIA_ID = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
 
+    // Ein beliebiger fester Zeitstempel (November 2023), damit der Test nicht von der Uhr abhängt.
     private const UPLOADED_AT = 1_700_000_000;
 
     /**
-     * Was: Ein Pending-Upload, dessen Media bereits an eine Bestellung gebunden ist.
-     * Warum: Sonst droht Datenverlust. Bleibt der Eintrag nach dem Order-Placement in
-     *        der Session stehen, zeigt die Confirm-Page des nächsten Warenkorbs ihn samt
-     *        gültigem Remove-Token. Ein Klick löschte das Media, und der FK-Cascade risse
-     *        den Anhang der abgeschlossenen Bestellung mit. Der Support stünde vor einer
-     *        Bestellung mit Status `attached`, aber ohne Datei.
-     * Erwartet: KEIN Media-Delete. Der Session-Eintrag verschwindet trotzdem.
+     * Bleibt ein Eintrag nach dem Bestellabschluss in der Sitzung stehen, zeigt die
+     * Bestätigungsseite des nächsten Warenkorbs ihn samt gültigem Token zum Entfernen. Löschte
+     * ein Klick darauf das Medium, risse die Kaskade den Anhang der abgeschlossenen Bestellung
+     * mit, und der Support stünde vor `attached` ohne Datei. Nur der Sitzungseintrag geht.
      */
     public function testDoesNotDeleteMediaAlreadyBoundToAnOrder(): void
     {
@@ -74,11 +70,8 @@ final class OrderAttachmentUploadServiceRemoveTest extends TestCase
     }
 
     /**
-     * Was: Ein Pending-Upload, der noch zu keiner Bestellung gehört.
-     * Warum: Der Normalfall — der Customer entfernt eine Datei vor dem Absenden.
-     *        Media und Session-Eintrag müssen beide weg, sonst bleibt eine verwaiste
-     *        Datei auf der Platte liegen.
-     * Erwartet: Genau ein Media-Delete, Session-Eintrag entfernt.
+     * Der Normalfall: Der Kunde entfernt eine Datei vor dem Absenden. Medium und
+     * Sitzungseintrag gehen beide, sonst bliebe eine verwaiste Datei liegen.
      */
     public function testDeletesMediaWhenNotBoundToAnyOrder(): void
     {
@@ -94,10 +87,8 @@ final class OrderAttachmentUploadServiceRemoveTest extends TestCase
     }
 
     /**
-     * Was: Die DAL wirft beim Prüfen der Bindung (DB weg, Scope-Problem).
-     * Warum: Fail-closed. Ein verwaistes Media räumt der Orphan-Cleanup-Cron ab;
-     *        ein zerstörter Bestell-Anhang ist unwiederbringlich.
-     * Erwartet: KEIN Media-Delete.
+     * Lässt sich die Bindung nicht prüfen, bleibt das Medium stehen. Ein verwaistes Medium
+     * räumt die Waisenbereinigung später ab, ein zerstörter Bestellanhang ist verloren.
      */
     public function testDoesNotDeleteMediaWhenBoundCheckFails(): void
     {
@@ -116,10 +107,8 @@ final class OrderAttachmentUploadServiceRemoveTest extends TestCase
     }
 
     /**
-     * Was: Unbekannter Token.
-     * Warum: Ein fremder oder abgelaufener Token darf nichts anfassen — der Store
-     *        liefert `null`, der Service muss geräuschlos aussteigen.
-     * Erwartet: Kein Media-Delete, keine Bindungs-Abfrage.
+     * Ein fremder oder abgelaufener Token findet im Speicher nichts, und der Dienst steigt ohne
+     * Abfrage und ohne Löschen aus.
      */
     public function testUnknownTokenIsANoOp(): void
     {
@@ -194,12 +183,9 @@ final class OrderAttachmentUploadServiceRemoveTest extends TestCase
     }
 
     /**
-     * Repository-Double, das die Criteria **honoriert**: Es liefert nur dann Treffer, wenn
-     * tatsächlich auf `mediaId` = das zu löschende Media gefiltert wird.
-     *
-     * Ein Double, das die Criteria ignoriert, würde den Cascade-Schutz auch dann bestätigen,
-     * wenn der Service auf das falsche Feld oder den falschen Wert filtert — der Test wäre
-     * vakuant.
+     * Das Double wertet die Criteria aus und liefert nur Treffer, wenn auf `mediaId` mit dem zu
+     * löschenden Medium gefiltert wird. Ein Double, das sie übergeht, bestätigte den Schutz auch
+     * bei falschem Feld oder Wert, und der Test bewiese nichts.
      *
      * @return EntityRepository<OrderAttachmentCollection>
      */
@@ -208,34 +194,31 @@ final class OrderAttachmentUploadServiceRemoveTest extends TestCase
         $repository = $this->createMock(EntityRepository::class);
         $repository->method('searchIds')->willReturnCallback(
             static function (Criteria $criteria, Context $context) use ($total): IdSearchResult {
-                $trifftMedia = false;
+                $touchesMedia = false;
                 foreach ($criteria->getFilters() as $filter) {
                     if ($filter instanceof EqualsFilter
                         && $filter->getField() === 'mediaId'
                         && $filter->getValue() === self::MEDIA_ID
                     ) {
-                        $trifftMedia = true;
+                        $touchesMedia = true;
                     }
                 }
 
-                $treffer = $trifftMedia ? $total : 0;
+                $match = $touchesMedia ? $total : 0;
 
                 // IdSearchResult erwartet die Treffer nach ihrem Schlüssel abgelegt,
                 // nicht als fortlaufende Liste.
-                $einträge = [];
-                foreach ($treffer > 0 ? range(1, $treffer) : [] as $i) {
-                    $schlüssel = \sprintf('%032d', $i);
-                    $einträge[$schlüssel] = ['primaryKey' => $schlüssel, 'data' => []];
+                $entries = [];
+                foreach ($match > 0 ? range(1, $match) : [] as $i) {
+                    // Hexadezimal wie eine echte Kennung und mit führendem `f`, damit PHP den
+                    // Schlüssel nicht als Zahlentext in einen Ganzzahlschlüssel umwandelt.
+                    $key = \sprintf('f%031x', $i);
+                    $entries[$key] = ['primaryKey' => $key, 'data' => []];
                 }
 
-                // PHP macht aus einem rein numerischen Zeichenketten-Schlüssel keinen
-                // Ganzzahl-Schlüssel, solange führende Nullen dranstehen; die Analyse
-                // sieht das nicht und weitet den Typ auf int|string.
-                /** @var array<string, array{primaryKey: string, data: array<string, mixed>}> $einträge */
-
                 return new IdSearchResult(
-                    $treffer,
-                    $einträge,
+                    $match,
+                    $entries,
                     $criteria,
                     $context,
                 );

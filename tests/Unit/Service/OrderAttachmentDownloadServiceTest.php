@@ -24,8 +24,11 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
- * Senior-saubere Tests: echter {@see OrderAttachmentLoader} mit gemocktem
- * {@see EntityRepository}, keine Mocks finaler Plugin-Klassen.
+ * Prüft den Downloaddienst für Kunde und Verwaltung: Kunden bekommen nur eigene Anhänge, und
+ * jeder Download trägt die Kopfzeilen, die das Anzeigen im Browser verhindern.
+ *
+ * Der {@see OrderAttachmentLoader} ist echt, gemockt ist nur das {@see EntityRepository}, weil
+ * sich die finalen Plugin-Klassen nicht mocken lassen.
  */
 final class OrderAttachmentDownloadServiceTest extends TestCase
 {
@@ -34,13 +37,9 @@ final class OrderAttachmentDownloadServiceTest extends TestCase
     private const FIXED_MEDIA_ID = 'cccccccccccccccccccccccccccccccc';
 
     /**
-     * Was: Anhang gehört dem aufrufenden Customer, Storage-Stream ist verfügbar.
-     * Warum: Happy-Path nach DSGVO Art. 15 (Auskunft) — Customer lädt seinen
-     *        eigenen Anhang im Account herunter. Headers `nosniff` und
-     *        `Content-Disposition: attachment` schützen vor MIME-Sniffing und
-     *        Inline-Render im Browser.
-     * Erwartet: `StreamedResponse` mit korrektem Content-Type, attachment-
-     *           Disposition und nosniff-Header.
+     * Der Kunde lädt seinen eigenen Anhang im Konto herunter (Auskunft nach Art. 15 DSGVO).
+     * `nosniff` und `Content-Disposition: attachment` verhindern, dass der Browser die Datei
+     * anders deutet oder direkt anzeigt.
      */
     public function testStreamsForRightfulOwner(): void
     {
@@ -63,17 +62,12 @@ final class OrderAttachmentDownloadServiceTest extends TestCase
     }
 
     /**
-     * Was: Customer ruft einen Anhang ab, der nicht zu seinen Bestellungen
-     *      gehört (Owner-Check schlägt fehl).
-     * Warum: IDOR-Schutz — wenn ein Angreifer fremde Anhang-IDs durchprobiert,
-     *        muss „nicht autorisiert" denselben Fehler liefern wie „nicht
-     *        vorhanden", sonst entstehen Disclosure-Pfade über Antwortzeit
-     *        oder Fehler-Differenz.
-     * Erwartet: `AttachmentNotFoundException` — kein 403, sondern 404.
+     * Probiert jemand fremde IDs durch, muss ein fremder Anhang denselben Fehler liefern wie
+     * ein fehlender. Ein 403 verriete, dass es die ID gibt.
      */
     public function testThrowsNotFoundWhenAttachmentBelongsToOtherCustomer(): void
     {
-        // Owner-Check schlägt fehl → DAL-Suche liefert nichts → AttachmentNotFoundException.
+        // Der Eigentümerfilter lässt die Suche leer ausgehen, so wie bei einem fremden Anhang.
         $service = new OrderAttachmentDownloadService(
             $this->loader([]),
             $this->createMock(MediaService::class),
@@ -85,17 +79,13 @@ final class OrderAttachmentDownloadServiceTest extends TestCase
     }
 
     /**
-     * Was: Anhang ist gefunden, aber `media` ist `null` (Media-Assoziation
-     *      fehlt nach DAL-Read).
-     * Warum: Defekter Datensatz — Anhang-Eintrag existiert, aber Media wurde
-     *        zwischendurch hart gelöscht. Klare Trennung von „nicht autorisiert"
-     *        (404) und „Server-State korrupt" (500) hilft beim Debugging.
-     * Erwartet: `MediaNotLoadedException`.
+     * Der Anhang ist da, das Medium aber gelöscht. Die eigene Ausnahme trennt diesen defekten
+     * Zustand (im Kundenpfad 500) vom fremden oder fehlenden Anhang (404).
      */
     public function testThrowsMediaNotLoadedWhenMediaIsMissing(): void
     {
         $attachment = $this->attachment();
-        $attachment->setMedia(null); // Simuliert verlorene Association
+        $attachment->setMedia(null);
 
         $service = new OrderAttachmentDownloadService(
             $this->loader([$attachment]),
@@ -108,13 +98,9 @@ final class OrderAttachmentDownloadServiceTest extends TestCase
     }
 
     /**
-     * Was: Admin-Pfad lädt einen beliebigen Anhang ohne Owner-Bindung.
-     * Warum: Die Auftragsbearbeitung braucht Zugriff auf das Kundendokument;
-     *        die Autorisierung liegt auf der ACL des Admin-Endpoints, nicht auf
-     *        einer Customer-Beziehung. Der Stream trägt dieselben Hardening-
-     *        Header wie der Customer-Pfad.
-     * Erwartet: `StreamedResponse` mit Content-Type, attachment-Disposition
-     *           und nosniff-Header.
+     * Die Auftragsbearbeitung braucht jeden Anhang; die Berechtigung prüft die ACL des
+     * Verwaltungsendpunkts, nicht eine Kundenbeziehung. Die Kopfzeilen sind dieselben wie im
+     * Kundenpfad.
      */
     public function testStreamsForAdminWithoutOwnerCheck(): void
     {
@@ -131,11 +117,8 @@ final class OrderAttachmentDownloadServiceTest extends TestCase
     }
 
     /**
-     * Was: Admin ruft eine Anhang-ID ab, zu der kein Datensatz existiert.
-     * Warum: Auch der Admin-Pfad darf keinen anderen Fehler liefern als „nicht
-     *        vorhanden" — der Controller mappt das auf 404, ohne die Existenz
-     *        einzelner Datensätze durchsickern zu lassen.
-     * Erwartet: `AttachmentNotFoundException`.
+     * Auch in der Verwaltung ergibt eine unbekannte ID nur „nicht vorhanden", das der
+     * Controller als 404 beantwortet.
      */
     public function testStreamForAdminThrowsNotFoundWhenAttachmentMissing(): void
     {
@@ -146,12 +129,8 @@ final class OrderAttachmentDownloadServiceTest extends TestCase
     }
 
     /**
-     * Was: Anhang existiert, aber das Media wurde bereits vom Retention-/Orphan-
-     *      Cleanup entfernt (`media` = null).
-     * Warum: Klare Trennung zwischen fehlendem Datensatz und fehlendem Media;
-     *        der Controller mappt beide auf 404, der Service unterscheidet sie
-     *        über die Exception-Klasse fürs Logging.
-     * Erwartet: `MediaNotLoadedException`.
+     * Hat eine Bereinigung das Medium schon entfernt, wirft der Dienst eine eigene Ausnahme.
+     * Der Verwaltungs-Controller beantwortet sie wie einen fehlenden Anhang mit 404.
      */
     public function testStreamForAdminThrowsMediaNotLoadedWhenMediaMissing(): void
     {
@@ -165,13 +144,9 @@ final class OrderAttachmentDownloadServiceTest extends TestCase
     }
 
     /**
-     * Was: Der Customer-Download muss den DAL-Owner-Filter tatsächlich setzen.
-     * Warum: Die anderen Tests beweisen nur Verhalten bei „gefunden"/„leer" —
-     *        sie würden auch dann grün bleiben, wenn der Owner-Filter fehlte
-     *        (IDOR). Dieser Test fängt die Criteria ein und prüft, dass der
-     *        Filter `order.orderCustomer.customerId = <eigene ID>` gesetzt ist.
-     * Erwartet: Ein `EqualsFilter` auf `order.orderCustomer.customerId` mit der
-     *           ID des aufrufenden Customers ist Teil der Suche.
+     * Die übrigen Tests sehen nur „gefunden" oder „leer" und blieben grün, wenn der
+     * Eigentümerfilter fehlte und jeder Kunde fremde Anhänge laden könnte. Hier wird die Suche
+     * abgefangen und `order.orderCustomer.customerId` mit der eigenen ID verlangt.
      */
     public function testStreamForCustomerAppliesOwnerFilter(): void
     {

@@ -4,66 +4,43 @@ declare(strict_types=1);
 
 namespace Ruhrcoder\RcOrderAttachment\Tests\Integration\Storefront\Subscriber;
 
-use PHPUnit\Framework\TestCase;
 use Ruhrcoder\RcOrderAttachment\Service\Config\PluginConfigProvider;
 use Ruhrcoder\RcOrderAttachment\Service\Mail\MailTemplateTypeResolverInterface;
 use Ruhrcoder\RcOrderAttachment\Service\OrderAttachmentManagerInterface;
 use Ruhrcoder\RcOrderAttachment\Storefront\Subscriber\MailBeforeValidateSubscriber;
-use Ruhrcoder\RcOrderAttachment\Tests\Integration\ContainerAccessTrait;
+use Ruhrcoder\RcOrderAttachment\Tests\Integration\IntegrationTestCase;
 use Shopware\Core\Checkout\Order\OrderEntity;
 use Shopware\Core\Content\Mail\Service\MailService;
 use Shopware\Core\Content\MailTemplate\Service\Event\MailBeforeValidateEvent;
 use Shopware\Core\Content\Media\MediaService;
-use Shopware\Core\Defaults;
-use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
-use Shopware\Core\Framework\Test\TestCaseBase\IntegrationTestBehaviour;
 use Shopware\Core\Framework\Uuid\Uuid;
 use Symfony\Component\Mime\Email;
 
 /**
- * End-to-End-Nachweis für die Kernanforderung: die vom Kunden hochgeladene
- * Datei muss an der Bestell-Bestätigungs-Mail hängen, damit der Support sie
- * bekommt.
+ * Durchgehender Nachweis der Kernanforderung: Die vom Kunden hochgeladene Datei hängt an der
+ * Bestellbestätigung, damit der Support sie bekommt. Der Test läuft gegen die echte DAL, den
+ * echten Medienspeicher und die Mailvorlagen aus der Datenbank.
  *
- * Der Test bildet exakt nach, was `SendMailAction` in Shopware 6.7 an
- * `MailService::send()` übergibt:
- *   - `data`         → enthält NUR `templateId`, keinen `mailTemplate`-Key
- *   - `templateData` → `['eventName' => 'checkout.order.placed', 'order' => OrderEntity, ...]`
- *
- * Genau daran ist die alte Implementierung gescheitert: sie verglich den
- * Flow-Event-Namen `checkout.order.placed` gegen den Whitelist-Default
- * `order_confirmation_mail` — es ging nie ein Anhang raus. Läuft gegen echte
- * DAL, echten Media-Storage und das echte Mail-Template aus der DB.
+ * Die Ereignisdaten entsprechen dem, was `SendMailAction` in Shopware 6.7 an
+ * `MailService::send()` übergibt: In `data` steht nur `templateId` und kein `mailTemplate`, in
+ * `templateData` stehen `eventName` (`checkout.order.placed`) und die Bestellung. Wer den
+ * Ereignisnamen statt des aufgelösten Vorlagentyps gegen die Freigabeliste
+ * `order_confirmation_mail` vergleicht, findet nie einen Treffer, und kein Anhang geht hinaus.
  */
-final class MailAttachmentIntegrationTest extends TestCase
+final class MailAttachmentIntegrationTest extends IntegrationTestCase
 {
-    use ContainerAccessTrait;
-    use IntegrationTestBehaviour;
-
     private const ATTACHMENT_CONTENT = '%PDF-1.4 rc-order-attachment integration probe';
 
-    private Context $context;
-
-    protected function setUp(): void
-    {
-        $this->context = Context::createDefaultContext();
-    }
-
     /**
-     * Was: Der Mail-Subscriber läuft mit den echten Event-Daten einer
-     *      Bestellbestätigung.
-     * Warum: Ohne Auflösung der `templateId`
-     *        zum Template-Type-`technicalName` bleibt `binAttachments` leer
-     *        und der Support bekommt die Kundendatei nie.
-     * Erwartet: `binAttachments` enthält genau einen Eintrag mit Original-
-     *           Dateiname, korrektem MIME-Typ und dem echten Datei-Inhalt.
+     * Ohne Auflösung der `templateId` zum `technicalName` des Vorlagentyps bleibt
+     * `binAttachments` leer, und der Support bekommt die Kundendatei nie.
      */
     public function testCustomerUploadIsAttachedToOrderConfirmationMail(): void
     {
-        // Nicht-Vakuitäts-Prüfung: Eine leere Whitelist würde jede Mail durchlassen
-        // und der Test wäre wertlos. Er muss gegen die scharfe Default-Whitelist laufen.
+        // Eine leere Freigabeliste ließe jede Mail durch, und der Test bewiese nichts. Er läuft
+        // deshalb nur gegen die vorgegebene Liste.
         $config = static::service(PluginConfigProvider::class)
             ->getForSalesChannel($this->getValidSalesChannelId());
         self::assertFalse($config->mailTemplateWhitelistEmpty(), 'Test muss gegen eine aktive Whitelist laufen');
@@ -83,7 +60,7 @@ final class MailAttachmentIntegrationTest extends TestCase
         );
 
         $event = new MailBeforeValidateEvent(
-            // Exakt das, was SendMailAction setzt: templateId, kein mailTemplate.
+            // So setzt es `SendMailAction`: `templateId`, kein `mailTemplate`.
             ['templateId' => $this->orderConfirmationTemplateId()],
             $this->context,
             [
@@ -102,19 +79,19 @@ final class MailAttachmentIntegrationTest extends TestCase
             'Der Anhang muss an der Bestätigungs-Mail hängen — sonst bekommt der Support die Datei nicht.',
         );
 
-        $binAttachments = $data[MailBeforeValidateSubscriber::DATA_KEY_BIN_ATTACHMENTS];
+        $binAttachments = $data[MailBeforeValidateSubscriber::DATA_KEY_BIN_ATTACHMENTS] ?? null;
+        self::assertIsArray($binAttachments);
         self::assertCount(1, $binAttachments);
-        self::assertSame('kundenzeichnung.pdf', $binAttachments[0]['fileName']);
-        self::assertSame('application/pdf', $binAttachments[0]['mimeType']);
-        self::assertSame(self::ATTACHMENT_CONTENT, $binAttachments[0]['content']);
+        $attachment = $binAttachments[0] ?? null;
+        self::assertIsArray($attachment);
+        self::assertSame('kundenzeichnung.pdf', $attachment['fileName']);
+        self::assertSame('application/pdf', $attachment['mimeType']);
+        self::assertSame(self::ATTACHMENT_CONTENT, $attachment['content']);
     }
 
     /**
-     * Was: Derselbe Anhang, aber die Mail ist eine Versand-Benachrichtigung.
-     * Warum: Die Whitelist muss weiterhin greifen — sonst hängt jede
-     *        Order-State-Change-Mail die Anhänge erneut an und flutet die
-     *        Support-Mailbox.
-     * Erwartet: Kein `binAttachments`-Eintrag.
+     * Greift die Freigabeliste nicht, hängt jede Mail zu einem Statuswechsel der Bestellung die
+     * Anhänge erneut an und flutet das Postfach des Supports.
      */
     public function testAttachmentsAreNotAddedToShippingMail(): void
     {
@@ -148,15 +125,9 @@ final class MailAttachmentIntegrationTest extends TestCase
     }
 
     /**
-     * Was: Die vollständige Mail-Kette — `MailService::send()` mit exakt den
-     *      Daten, die `SendMailAction` übergibt.
-     * Warum: Der Subscriber-Test beweist nur, dass `binAttachments` im Event
-     *        landet. Dieser Test beweist, dass Shopware daraus tatsächlich einen
-     *        Mail-Anhang baut: er läuft durch den echten Event-Dispatcher (prüft
-     *        also auch die DI-Registrierung des Subscribers), durch die
-     *        Daten-Validierung und durch die `MailFactory`.
-     * Erwartet: Das erzeugte `Email`-Objekt trägt genau einen Anhang mit
-     *           Dateiname, MIME-Typ und Inhalt der Kundendatei.
+     * Der Subscriber-Test zeigt nur, dass `binAttachments` im Ereignis landet. Dieser Test geht
+     * durch `MailService::send()`, den echten Dispatcher (und damit die Registrierung des
+     * Subscribers im Container), die Datenprüfung und die `MailFactory` bis zur fertigen Mail.
      */
     public function testMailServiceBuildsEmailWithCustomerAttachment(): void
     {
@@ -202,11 +173,8 @@ final class MailAttachmentIntegrationTest extends TestCase
     }
 
     /**
-     * Was: Der Resolver gegen das echte `mail_template` aus der DB.
-     * Warum: Beweist, dass `data['templateId']` tatsächlich zum
-     *        `order_confirmation_mail`-Type auflöst — die Annahme, auf der
-     *        die gesamte Whitelist beruht.
-     * Erwartet: `order_confirmation_mail`.
+     * Die ganze Freigabeliste beruht auf der Annahme, dass `data['templateId']` zum Typ
+     * `order_confirmation_mail` auflöst; geprüft wird sie gegen `mail_template` aus der Datenbank.
      */
     public function testResolverMapsTemplateIdToTechnicalName(): void
     {
@@ -250,7 +218,7 @@ final class MailAttachmentIntegrationTest extends TestCase
     private function loadOrder(string $orderId): OrderEntity
     {
         $order = static::repository('order.repository')
-            ->search(new Criteria([$orderId]), $this->context)->first();
+            ->search(new Criteria([$orderId]), $this->context)->getEntities()->first();
 
         self::assertInstanceOf(OrderEntity::class, $order);
 
@@ -258,9 +226,8 @@ final class MailAttachmentIntegrationTest extends TestCase
     }
 
     /**
-     * Legt einen Media-Datensatz an UND schreibt die Datei in den konfigurierten
-     * Storage — `MediaService::loadFile()` muss sie später lesen können, sonst
-     * misst der Test nur die halbe Kette.
+     * Legt den Mediendatensatz an und schreibt die Datei in den konfigurierten Speicher. Ohne
+     * Datei kann `MediaService::loadFile()` nichts lesen, und der Test prüfte nur die halbe Kette.
      */
     private function createStoredMedia(): string
     {
@@ -282,81 +249,5 @@ final class MailAttachmentIntegrationTest extends TestCase
         );
 
         return $mediaId;
-    }
-
-    private function createTestOrder(): string
-    {
-        $orderId = Uuid::randomHex();
-        static::repository('order.repository')->create([[
-            'id' => $orderId,
-            'orderNumber' => 'RCOA-' . $orderId,
-            'orderDateTime' => '2026-05-20 10:00:00',
-            'currencyId' => Defaults::CURRENCY,
-            'currencyFactor' => 1.0,
-            'salesChannelId' => $this->getValidSalesChannelId(),
-            'stateId' => $this->getOrderStateId('open'),
-            'price' => [
-                'netPrice' => 100,
-                'totalPrice' => 119,
-                'positionPrice' => 100,
-                'rawTotal' => 119,
-                'taxStatus' => 'gross',
-                'calculatedTaxes' => [],
-                'taxRules' => [],
-            ],
-            'shippingCosts' => [
-                'unitPrice' => 0,
-                'totalPrice' => 0,
-                'quantity' => 1,
-                'calculatedTaxes' => [],
-                'taxRules' => [],
-            ],
-            'totalRounding' => ['decimals' => 2, 'interval' => 0.01, 'roundForNet' => true],
-            'itemRounding' => ['decimals' => 2, 'interval' => 0.01, 'roundForNet' => true],
-            'orderCustomer' => [
-                'email' => 'integration-test@example.com',
-                'firstName' => 'Test',
-                'lastName' => 'Customer',
-                'salutationId' => $this->getSalutationId(),
-            ],
-            'billingAddressId' => Uuid::randomHex(),
-            'addresses' => [],
-        ]], $this->context);
-
-        return $orderId;
-    }
-
-    private function getValidSalesChannelId(): string
-    {
-        $id = static::repository('sales_channel.repository')
-            ->searchIds(new Criteria(), $this->context)->firstId();
-        self::assertIsString($id, 'Mindestens ein Sales-Channel muss existieren');
-
-        return $id;
-    }
-
-    private function getOrderStateId(string $technicalName): string
-    {
-        $criteria = new Criteria();
-        $criteria->addFilter(new EqualsFilter('technicalName', $technicalName));
-        $criteria->setLimit(1);
-
-        $id = static::repository('state_machine_state.repository')
-            ->searchIds($criteria, $this->context)->firstId();
-        self::assertIsString($id);
-
-        return $id;
-    }
-
-    private function getSalutationId(): string
-    {
-        $criteria = new Criteria();
-        $criteria->setLimit(1);
-
-        $id = static::repository('salutation.repository')
-            ->searchIds($criteria, $this->context)->firstId();
-        self::assertIsString($id);
-
-        return $id;
     }
 }

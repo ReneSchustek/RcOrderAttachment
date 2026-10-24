@@ -28,18 +28,18 @@ use Symfony\Component\HttpFoundation\Session\Session;
 use Symfony\Component\HttpFoundation\Session\Storage\MockArraySessionStorage;
 
 /**
- * Senior-saubere Tests gegen den Page-Loader: keine Mocks finaler Plugin-Klassen,
- * stattdessen echte Instanzen mit gestubbten Shopware-Boundaries
- * (`SystemConfigService`, `EntityRepository`, `Session`).
+ * Prüft, welche Daten der Pagelet-Loader für Bestätigungsseite und Bestellübersicht im Konto
+ * liefert. Was er zurückgibt, bestimmt, ob das Template einen Upload-Bereich oder eine
+ * Anhangsliste zeigt, auch eine leere.
+ *
+ * Die Plugin-Klassen sind echt, ersetzt sind nur `SystemConfigService`, `EntityRepository` und
+ * die Sitzung.
  */
 final class OrderAttachmentPageletLoaderTest extends TestCase
 {
     /**
-     * Was: `loadConfirm` mit deaktiviertem Plugin.
-     * Warum: Der Subscriber darf für inaktive Sales-Channels keine Upload-Extension
-     *        an die Confirm-Page hängen — sonst rendert Twig die Upload-Sektion
-     *        trotz Deaktivierung.
-     * Erwartet: `null` als Rückgabe; der Subscriber überspringt das `addExtension`.
+     * Ist das Plugin im Verkaufskanal aus, liefert der Loader `null`, und der Subscriber hängt
+     * nichts an. Sonst zeigte das Template den Upload-Bereich trotzdem.
      */
     public function testLoadConfirmReturnsNullWhenDisabled(): void
     {
@@ -55,11 +55,9 @@ final class OrderAttachmentPageletLoaderTest extends TestCase
     }
 
     /**
-     * Was: `loadConfirm` mit aktivem Plugin und zwei Pending-Uploads in der Session.
-     * Warum: Die Token-Keys (`tok-a`, `tok-b`) aus dem Store müssen verworfen werden,
-     *        weil das Twig-Template eine sequentielle Liste (0, 1, …) erwartet —
-     *        sonst wirft `for`-Iteration in HEEDS-Templates auf.
-     * Erwartet: `ConfirmPageUploadStruct` mit zwei Uploads und Listen-Indizes `[0, 1]`.
+     * Der Speicher schlüsselt nach Token, der Struct verspricht aber eine Liste
+     * (`list<PendingUpload>`). Mit den Tokens als Schlüssel würde daraus beim Serialisieren nach
+     * JSON ein Objekt statt eines Arrays.
      */
     public function testLoadConfirmBuildsStructWithPendingUploadsAsList(): void
     {
@@ -77,15 +75,12 @@ final class OrderAttachmentPageletLoaderTest extends TestCase
 
         self::assertInstanceOf(ConfirmPageUploadStruct::class, $result);
         self::assertCount(2, $result->getPendingUploads());
-        // Token-Keys aus dem Store werden verworfen — Twig erwartet eine Liste.
         self::assertSame([0, 1], array_keys($result->getPendingUploads()));
     }
 
     /**
-     * Was: `loadAccount` für eine leere Order-Collection.
-     * Warum: Kunden ohne Bestellhistorie dürfen keinen DAL-Roundtrip auslösen —
-     *        Performance-Pflicht im Storefront-Render-Pfad.
-     * Erwartet: leeres Array, kein Aufruf des `OrderAttachmentLoader::loadForOrderIds`.
+     * Ohne Bestellungen gibt es nichts zu laden. Der Loader steigt vor der Datenbankabfrage aus;
+     * der Test sieht davon nur das leere Ergebnis, nicht den ausbleibenden Aufruf.
      */
     public function testLoadAccountReturnsEmptyForNoOrders(): void
     {
@@ -101,11 +96,8 @@ final class OrderAttachmentPageletLoaderTest extends TestCase
     }
 
     /**
-     * Was: `loadAccount` mit zwei Orders, von denen nur eine Anhänge besitzt.
-     * Warum: Account-Order-Page (DSGVO Art. 15) muss N+1-frei arbeiten und darf
-     *        Orders ohne Anhänge nicht mit leerer Extension befüllen — sonst
-     *        rendert das Template eine leere „Anhänge"-Sektion.
-     * Erwartet: Ergebnis enthält nur die Order mit Treffer; die zweite fehlt.
+     * Die Anhänge aller Bestellungen kommen in einer Abfrage. Eine Bestellung ohne Anhang bekommt
+     * keinen Eintrag, sonst zeigte das Template einen leeren Anhangsbereich.
      */
     public function testLoadAccountBuildsStructsAndSkipsEmptyOrders(): void
     {
@@ -122,7 +114,7 @@ final class OrderAttachmentPageletLoaderTest extends TestCase
             $this->pendingUploadStore(),
             $this->attachmentLoader([
                 $this->attachment('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', $orderIdA),
-                // orderIdB liefert die DAL gar nicht zurück
+                // Für `$orderIdB` liefert die DAL nichts.
             ]),
         );
 
@@ -135,10 +127,8 @@ final class OrderAttachmentPageletLoaderTest extends TestCase
     }
 
     /**
-     * Was: `loadAccount` wenn der DAL-Loader gar keine Treffer liefert.
-     * Warum: Edge-Case bei Retention-Cleanup — alle Anhänge sind bereits gelöscht,
-     *        Order existiert noch. Der Loader darf keine leeren Structs erzeugen.
-     * Erwartet: leeres Array.
+     * Hat die Aufbewahrungsbereinigung alle Anhänge gelöscht, besteht die Bestellung weiter. Der
+     * Loader erzeugt dann keine leeren Structs.
      */
     public function testLoadAccountReturnsEmptyWhenLoaderHasNoResults(): void
     {

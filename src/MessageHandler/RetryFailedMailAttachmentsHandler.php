@@ -18,36 +18,39 @@ use Symfony\Component\Messenger\Stamp\DelayStamp;
 use Throwable;
 
 /**
- * Opt-in-Retry für fehlgeschlagene Mail-Anhänge.
+ * Prüft nach einem gescheiterten Mailanhang, ob die Dateien inzwischen lesbar sind, und trägt den
+ * Anhangstatus der Bestellung nach. Die Nachricht entsteht nur, wenn der Betreiber die
+ * Wiederholung in der Konfiguration eingeschaltet hat.
  *
- * Strategie: prüft, ob die Anhänge inzwischen lesbar sind. Lesbar → Status auf
- * `attached`. Nicht lesbar → eine neue Nachricht mit `attempt + 1` und
- * {@see DelayStamp} (Exponential-Backoff) dispatchen. Ab {@see MAX_ATTEMPTS}
- * final `failed`.
+ * Sind alle Anhänge lesbar, wird der Status `attached`. Sonst plant der Handler eine neue Nachricht
+ * mit `attempt + 1` und wachsender Wartezeit ein; nach {@see MAX_ATTEMPTS} Versuchen schreibt er
+ * `failed` oder `partial_failure`.
  *
- * Warum Re-Dispatch statt `RecoverableMessageHandlingException`:
- *   Symfony-Messenger stellt bei einer Recoverable-Exception dieselbe Nachricht
- *   erneut zu — das `attempt`-Feld bleibt dabei unverändert bei 1. Die
- *   Abbruchbedingung `attempt >= MAX_ATTEMPTS` wäre damit unerreichbar, der
- *   finale `failed`-Status würde nie geschrieben, und die Zahl der Versuche
- *   hinge allein an der `retry_strategy` des Transports. Mit explizitem
- *   Re-Dispatch zählt der Handler selbst und ist unabhängig von der
- *   Transport-Konfiguration des Betreibers.
+ * Eine `RecoverableMessageHandlingException` wäre die naheliegende Alternative, taugt aber nicht:
+ * Symfony stellt dann dieselbe Nachricht erneut zu, `attempt` bliebe bei 1, die Abbruchbedingung
+ * wäre unerreichbar und die Zahl der Versuche hinge allein an der `retry_strategy` des Transports.
+ * Mit einer eigenen neuen Nachricht zählt der Handler selbst.
  *
- * Der eigentliche Mail-Re-Send bleibt bewusst Operator-Aufgabe — ein blinder
- * Re-Send würde den Customer mit Duplikaten konfrontieren.
+ * Die Mail erneut zu verschicken bleibt Aufgabe des Betriebs, weil ein blinder zweiter Versand
+ * dem Kunden doppelte Bestätigungen schickt.
  */
 #[AsMessageHandler]
 final class RetryFailedMailAttachmentsHandler
 {
+    /**
+     * Fünf Versuche mit 1, 2, 4 und 8 Minuten Abstand ergeben rund eine Viertelstunde, in der sich
+     * ein kurz gestörter Speicher erholen kann. Mehr Versuche verzögern nur die endgültige Meldung
+     * an den Betrieb, wenn die Datei wirklich fehlt.
+     */
     public const MAX_ATTEMPTS = 5;
 
     /**
-     * Basis des Exponential-Backoff: Versuch n wartet `BASE * 2^(n-1)`,
-     * gedeckelt auf {@see MAX_DELAY_MS}.
+     * Versuch n wartet `BASE_DELAY_MS * 2^(n-1)`, gedeckelt auf {@see MAX_DELAY_MS}. Eine Minute
+     * gibt dem Speicher Zeit für einen Neustart, ohne den Status lange offen zu lassen.
      */
     private const BASE_DELAY_MS = 60_000;
 
+    // Die Obergrenze von einer Stunde greift erst, wenn MAX_ATTEMPTS über sieben steigt.
     private const MAX_DELAY_MS = 3_600_000;
 
     public function __construct(
@@ -88,10 +91,8 @@ final class RetryFailedMailAttachmentsHandler
         }
 
         if ($message->attempt >= self::MAX_ATTEMPTS) {
-            // Treue der Telemetrie erhalten: Wenn nur ein Teil der Anhänge
-            // dauerhaft unlesbar bleibt (0 < failures < total), ist das ein
-            // `partial_failure` — pauschales `failed` würde suggerieren, dass
-            // gar kein Anhang ankam, obwohl welche zugestellt wurden.
+            // Bleibt nur ein Teil der Anhänge unlesbar, ist das `partial_failure`. Ein pauschales
+            // `failed` behauptete, es sei gar kein Anhang angekommen.
             if ($failures < $attachments->count()) {
                 $this->statusTracker->markPartialFailure($message->orderId, $context);
             } else {
@@ -126,6 +127,7 @@ final class RetryFailedMailAttachmentsHandler
                 continue;
             }
 
+            // Das Medium ist privat; lesen darf es nur der Systemkontext.
             try {
                 $context->scope(
                     Context::SYSTEM_SCOPE,

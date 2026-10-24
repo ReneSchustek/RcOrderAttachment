@@ -4,13 +4,13 @@ const { Component, Data, Mixin } = Shopware;
 const { Criteria } = Data;
 
 /**
- * Listet die Customer-Uploads (rc_order_attachment) einer Bestellung im
- * Admin-Order-Detail und bietet je Anhang einen Download über den
- * ACL-geschützten Admin-Endpoint `/api/_action/rc-order-attachment/{id}/download`.
+ * Zeigt in der Bestellansicht der Verwaltung die Uploads des Kunden (`rc_order_attachment`) und
+ * bietet je Anhang einen Download über die durch `order:read` geschützte Route
+ * `/api/_action/rc-order-attachment/{id}/download`.
  *
- * Read-only: Hochladen bleibt der Storefront-Confirm-Page vorbehalten, Löschen
- * dem Retention-/Orphan-Cleanup. Die Card dient allein der Auftragsbearbeitung
- * (Mitarbeiter kommt an das Kundendokument, ohne die Bestätigungs-Mail zu suchen).
+ * Die Karte zeigt nur an. Hochgeladen wird allein auf der Bestätigungsseite der Storefront,
+ * gelöscht nur von der Aufräumaufgabe nach Ablauf der Frist. So kommt ein Mitarbeiter an das
+ * Dokument des Kunden, ohne die Bestätigungsmail zu suchen.
  */
 Component.register('rc-order-attachment-list', {
     template,
@@ -40,6 +40,8 @@ Component.register('rc-order-attachment-list', {
         },
 
         criteria() {
+            // 50 entspricht der harten Obergrenze an Dateien je Bestellung (ABSOLUTE_MAX_FILES),
+            // alle Anhänge passen also auf eine Seite.
             const criteria = new Criteria(1, 50);
             criteria.addFilter(Criteria.equals('orderId', this.orderId));
             criteria.addAssociation('media');
@@ -86,8 +88,8 @@ Component.register('rc-order-attachment-list', {
                 return Promise.resolve();
             }
 
-            // Sequenz-Guard: Wechselt die orderId, während eine Suche noch läuft,
-            // darf eine langsamere frühere Antwort die neuere nicht überschreiben.
+            // Wechselt die orderId, während eine Suche noch läuft, darf eine langsamere frühere
+            // Antwort die neuere nicht überschreiben. Die Laufnummer erkennt veraltete Antworten.
             const seq = (this._loadSeq = (this._loadSeq || 0) + 1);
             this.isLoading = true;
 
@@ -136,6 +138,8 @@ Component.register('rc-order-attachment-list', {
             }
             this.downloadingIds = [...this.downloadingIds, item.id];
 
+            // Über den HTTP-Client statt einen Link, weil die Route ein Bearer-Token verlangt, das
+            // ein normaler Link nicht mitschickt.
             this.httpClient.get(`/_action/rc-order-attachment/${item.id}/download`, {
                 responseType: 'blob',
                 headers: {
@@ -156,6 +160,8 @@ Component.register('rc-order-attachment-list', {
             const blob = new Blob([blobData], {
                 type: item.mimeType || 'application/octet-stream',
             });
+            // Ein unsichtbarer Link mit `download` löst das Speichern unter dem ursprünglichen
+            // Dateinamen aus; die Objekt-URL wird danach freigegeben.
             const objectUrl = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = objectUrl;

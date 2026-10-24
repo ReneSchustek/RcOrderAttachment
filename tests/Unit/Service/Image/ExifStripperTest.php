@@ -9,9 +9,9 @@ use Psr\Log\NullLogger;
 use Ruhrcoder\RcOrderAttachment\Service\Image\ExifStripper;
 
 /**
- * Unit-Tests für den EXIF-Stripper. Sichert das DSGVO-relevante Verhalten:
- * Re-Encode mit GD entfernt EXIF/IPTC/XMP, unbekannte Endungen werden
- * fail-safe durchgelassen statt zu brechen.
+ * Prüft das Entfernen von Metadaten aus Kundenfotos, das aus Datenschutzgründen GPS-Position
+ * und Kameradaten tilgt: Das Neukodieren mit GD gelingt, und alles, was GD nicht lesen kann,
+ * wird unverändert durchgereicht, statt den Upload abzubrechen.
  */
 final class ExifStripperTest extends TestCase
 {
@@ -47,10 +47,8 @@ final class ExifStripperTest extends TestCase
     }
 
     /**
-     * Was: Strip-Aufruf für `.pdf` (nicht-Bildtyp).
-     * Warum: Stripper soll nicht in PDF-Strukturen reinwühlen — PDFs haben
-     *        eigene Metadaten, die andere Werkzeuge (`qpdf`) entfernen.
-     * Erwartet: `false` (kein Strip durchgeführt), keine Datei-Mutation.
+     * PDFs tragen eigene Metadaten, die nur eigene Werkzeuge wie `qpdf` sauber entfernen. Der
+     * Stripper lässt sie unangetastet und meldet `false`.
      */
     public function testReturnsFalseForUnsupportedExtension(): void
     {
@@ -60,26 +58,19 @@ final class ExifStripperTest extends TestCase
     }
 
     /**
-     * Was: Strip-Aufruf für `.heic` (iPhone-Foto-Format, GD-inkompatibel).
-     * Warum: GD kann HEIC nicht — wir loggen einen Hinweis und reichen das
-     *        Bild unverändert weiter, statt zu crashen. README empfiehlt
-     *        Imagick-Setup bei DSGVO-sensiblen Setups.
-     * Erwartet: `false`, kein Throw, kein Datei-Verlust.
+     * GD kann das iPhone-Format HEIC nicht lesen. Der Stripper protokolliert das und reicht die
+     * Datei unverändert weiter, statt den Upload abzubrechen.
      */
     public function testReturnsFalseForHeic(): void
     {
-        // HEIC kann GD nicht — Stripper returns false (Fail-Open, kein Throw).
         $path = $this->writeTempFile('test.heic', 'binary content');
 
         self::assertFalse($this->stripper->stripInPlace($path, 'heic'));
     }
 
     /**
-     * Was: Strip-Aufruf für einen nicht existierenden Pfad.
-     * Warum: Race-Condition-Schutz — die Datei könnte zwischen Validierung und
-     *        Strip vom OS gelöscht worden sein. Stripper darf nicht crashen,
-     *        sondern muss fail-safe `false` liefern.
-     * Erwartet: `false` ohne Throw.
+     * Zwischen Prüfung und Bereinigung kann die temporäre Datei schon verschwunden sein. Der
+     * Stripper meldet dann `false`, statt zu werfen.
      */
     public function testReturnsFalseForNonExistentPath(): void
     {
@@ -87,11 +78,8 @@ final class ExifStripperTest extends TestCase
     }
 
     /**
-     * Was: Eingabedatei mit `.jpg`-Endung, aber kaputtem Inhalt.
-     * Warum: `imagecreatefromjpeg` würde `false` zurückgeben und (mit @-Op
-     *        unterdrückt) einen Warning werfen. Der Stripper muss das fangen
-     *        und fail-safe weitermachen.
-     * Erwartet: `false`, keine Datei-Mutation.
+     * Bei kaputtem Inhalt liefert `imagecreatefromjpeg()` `false` samt Warnung. Der Stripper
+     * fängt beides ab und meldet `false`.
      */
     public function testReturnsFalseForCorruptJpeg(): void
     {
@@ -101,33 +89,72 @@ final class ExifStripperTest extends TestCase
     }
 
     /**
-     * Was: Re-Encode eines gültigen, mit GD erzeugten JPEGs.
-     * Warum: Happy-Path — der DSGVO-relevante Code-Pfad. EXIF/GPS-Daten würden
-     *        durch das Re-Encode automatisch wegfallen.
-     * Erwartet: `true` und Datei nicht leer.
+     * Der Zweck der Klasse: Ein Foto mit EXIF-Block hat danach keinen mehr. GD schreibt kein EXIF,
+     * deshalb setzt der Test den Block als APP1-Segment selbst ins JPEG.
      */
-    public function testStripsValidJpeg(): void
+    public function testRemovesTheExifBlock(): void
+    {
+        $this->requireGdAndExif();
+        $path = $this->writeJpeg(10, 10);
+        $this->injectExifOrientation($path, 1);
+        self::assertSame(1, $this->exifOrientation($path), 'Der Test muss mit einem EXIF-Block beginnen.');
+
+        self::assertTrue($this->stripper->stripInPlace($path, 'jpg'));
+
+        self::assertNull($this->exifOrientation($path), 'Nach dem Entfernen darf kein EXIF-Block mehr da sein.');
+    }
+
+    /**
+     * Ein Hochkantfoto steht oft nur über die EXIF-Ausrichtung aufrecht (6 = im Uhrzeigersinn drehen).
+     * Fällt das Kennzeichen weg, muss das Bild selbst gedreht sein, sonst sieht der Betrieb es quer.
+     * Das Testbild ist 20×10, links rot, rechts blau; aufgerichtet ist es 10×20, oben rot.
+     */
+    public function testAPortraitPhotoStaysUpright(): void
+    {
+        $this->requireGdAndExif();
+        $path = $this->writeJpeg(20, 10, splitColours: true);
+        $this->injectExifOrientation($path, 6);
+
+        self::assertTrue($this->stripper->stripInPlace($path, 'jpg'));
+
+        $image = imagecreatefromjpeg($path);
+        self::assertNotFalse($image);
+        self::assertSame([10, 20], [imagesx($image), imagesy($image)]);
+        self::assertGreaterThan(150, (imagecolorat($image, 5, 2) >> 16) & 0xFF, 'Oben muss die rote Hälfte stehen.');
+        self::assertGreaterThan(150, imagecolorat($image, 5, 17) & 0xFF, 'Unten muss die blaue Hälfte stehen.');
+    }
+
+    /**
+     * Wächter der Geschwindigkeit: ein Foto mit 6 Megapixeln, wie es ältere Smartphones liefern.
+     * Gemessen sind für 12 Megapixel rund 140 ms (`benchmarks/ExifStripperBench.php`); die Grenze von
+     * zwei Sekunden ist großzügig gegen Schwankungen und fängt doch einen Umbau, der jedes Foto
+     * mehrfach dekodiert.
+     */
+    public function testAPhoneSizedPhotoIsStrippedQuickly(): void
     {
         if (!\function_exists('imagecreatetruecolor') || !\function_exists('imagejpeg')) {
             self::markTestSkipped('GD-Extension nicht verfügbar');
         }
 
-        $path = $this->writeJpegWithExif();
+        $image = imagecreatetruecolor(3000, 2000);
+        imagefilledrectangle($image, 0, 0, 1499, 1999, (int) imagecolorallocate($image, 200, 120, 40));
+        $path = $this->tempDir . '/rc-exif-speed-' . bin2hex(random_bytes(4)) . '.jpg';
+        imagejpeg($image, $path, 90);
+        $this->created[] = $path;
 
-        $result = $this->stripper->stripInPlace($path, 'jpg');
+        $start = hrtime(true);
+        $stripped = $this->stripper->stripInPlace($path, 'jpg');
+        $milliseconds = (hrtime(true) - $start) / 1_000_000;
 
-        self::assertTrue($result);
-        self::assertGreaterThan(0, filesize($path), 'Datei darf nach Strip nicht leer sein');
+        self::assertTrue($stripped);
+        self::assertLessThan(2000, $milliseconds);
     }
 
     /**
-     * Was: Re-Encode eines PNGs mit Alpha-Kanal.
-     * Warum: PNG-Re-Encode darf den Alpha-Kanal NICHT wegwerfen — sonst hätten
-     *        Produktfotos mit transparentem Hintergrund nach dem Strip einen
-     *        schwarzen Hintergrund.
-     * Erwartet: `true`, Datei nicht leer.
+     * Ein PNG mit Transparenz bleibt transparent. Ginge der Alphakanal beim Neuschreiben verloren,
+     * hätten freigestellte Fotos danach einen schwarzen Hintergrund.
      */
-    public function testStripsValidPngPreservingAlpha(): void
+    public function testAPngKeepsItsTransparency(): void
     {
         if (!\function_exists('imagecreatetruecolor') || !\function_exists('imagepng')) {
             self::markTestSkipped('GD-Extension nicht verfügbar');
@@ -135,18 +162,16 @@ final class ExifStripperTest extends TestCase
 
         $path = $this->writePngWithAlpha();
 
-        $result = $this->stripper->stripInPlace($path, 'png');
+        self::assertTrue($this->stripper->stripInPlace($path, 'png'));
 
-        self::assertTrue($result);
-        self::assertGreaterThan(0, filesize($path));
+        $image = imagecreatefrompng($path);
+        self::assertNotFalse($image);
+        self::assertSame(127, (imagecolorat($image, 5, 5) >> 24) & 0x7F, 'Der Bildpunkt muss ganz durchsichtig bleiben.');
     }
 
     /**
-     * Was: Strip mit großgeschriebener Extension (`JPG`).
-     * Warum: Browser senden Extensions in beliebiger Case. Case-sensitive
-     *        Vergleich würde `IMG.JPG` durchlassen (nicht gestrippt) und
-     *        DSGVO-Pflicht verletzen.
-     * Erwartet: `true` — Extension wird intern auf lowercase normalisiert.
+     * Endungen kommen in beliebiger Schreibweise. Ein Vergleich mit Groß- und Kleinschreibung
+     * ließe `IMG.JPG` samt Standortdaten ungefiltert durch.
      */
     public function testCaseInsensitiveExtension(): void
     {
@@ -154,9 +179,8 @@ final class ExifStripperTest extends TestCase
             self::markTestSkipped('GD-Extension nicht verfügbar');
         }
 
-        $path = $this->writeJpegWithExif();
+        $path = $this->writeJpeg(10, 10);
 
-        // Großgeschriebene Extension wird ebenso normalisiert
         self::assertTrue($this->stripper->stripInPlace($path, 'JPG'));
     }
 
@@ -169,20 +193,59 @@ final class ExifStripperTest extends TestCase
         return $path;
     }
 
-    private function writeJpegWithExif(): string
+    private function requireGdAndExif(): void
     {
-        // `imagedestroy()` bewirkt unter PHP 8 nichts, und PHP 8.5 markiert es als veraltet —
-        // GC räumt das GdImage-Objekt nach dem Funktionsende selbständig auf.
-        $img = imagecreatetruecolor(10, 10);
-        $farbe = imagecolorallocate($img, 255, 0, 0);
-        self::assertNotFalse($farbe, 'Farbe liess sich nicht belegen.');
-        imagefill($img, 0, 0, $farbe);
+        if (!\function_exists('imagecreatetruecolor') || !\function_exists('exif_read_data')) {
+            self::markTestSkipped('GD- oder exif-Erweiterung nicht verfügbar');
+        }
+    }
+
+    /**
+     * Ein JPEG ohne Metadaten, einfarbig rot oder links rot und rechts blau.
+     *
+     * @param int<1, max> $width
+     * @param int<1, max> $height
+     */
+    private function writeJpeg(int $width, int $height, bool $splitColours = false): string
+    {
+        // Kein `imagedestroy()`: Unter PHP 8 bewirkt es nichts, und PHP 8.5 markiert es als veraltet.
+        // Das `GdImage`-Objekt räumt die Speicherbereinigung am Ende der Funktion selbst ab.
+        $img = imagecreatetruecolor($width, $height);
+        $red = imagecolorallocate($img, 255, 0, 0);
+        $blue = imagecolorallocate($img, 0, 0, 255);
+        self::assertNotFalse($red, 'Farbe ließ sich nicht belegen.');
+        self::assertNotFalse($blue, 'Farbe ließ sich nicht belegen.');
+        imagefilledrectangle($img, 0, 0, $width - 1, $height - 1, $red);
+        if ($splitColours) {
+            imagefilledrectangle($img, intdiv($width, 2), 0, $width - 1, $height - 1, $blue);
+        }
 
         $path = $this->tempDir . '/test-' . (++$this->counter) . '.jpg';
         imagejpeg($img, $path, 90);
         $this->created[] = $path;
 
         return $path;
+    }
+
+    /**
+     * Setzt hinter den Dateianfang ein APP1-Segment mit einem EXIF-Block, der nur die Ausrichtung
+     * trägt: TIFF-Kopf in Little Endian, ein Verzeichnis mit einem Eintrag (0x0112, SHORT).
+     */
+    private function injectExifOrientation(string $path, int $orientation): void
+    {
+        $tiff = 'II' . pack('vV', 0x2A, 8) . pack('v', 1) . pack('vvVvv', 0x0112, 3, 1, $orientation, 0) . pack('V', 0);
+        $payload = "Exif\0\0" . $tiff;
+        $segment = "\xFF\xE1" . pack('n', \strlen($payload) + 2) . $payload;
+
+        $jpeg = (string) file_get_contents($path);
+        file_put_contents($path, substr($jpeg, 0, 2) . $segment . substr($jpeg, 2));
+    }
+
+    private function exifOrientation(string $path): ?int
+    {
+        $exif = @exif_read_data($path);
+
+        return \is_array($exif) && isset($exif['Orientation']) ? (int) $exif['Orientation'] : null;
     }
 
     private function writePngWithAlpha(): string

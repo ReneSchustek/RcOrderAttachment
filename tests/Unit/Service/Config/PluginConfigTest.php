@@ -8,18 +8,15 @@ use PHPUnit\Framework\TestCase;
 use Ruhrcoder\RcOrderAttachment\Service\Config\PluginConfig;
 
 /**
- * Unit-Tests für das immutable Plugin-Config-Struct: KB→Byte-Konvertierung,
- * Whitelist-Check, Retention-Flag. Provider-eigene Tests liegen separat.
+ * Prüft die abgeleiteten Werte der unveränderlichen Konfiguration: Umrechnung von KB in Byte,
+ * Endungsprüfung und Schalter der Aufbewahrung. Jeder Validator und die Bereinigung verlassen
+ * sich darauf; das Lesen und Bereinigen prüft `PluginConfigProviderTest`.
  */
 final class PluginConfigTest extends TestCase
 {
     /**
-     * Was: Konvertierung von KB-Werten in Bytes via `maxFileSizeBytes()` /
-     *      `maxTotalSizeBytes()`.
-     * Warum: Validatoren rechnen in Bytes (Symfony's `UploadedFile::getSize()`),
-     *        Konfig speichert KB. Eine fehlerhafte Konvertierung (z. B. 1000
-     *        statt 1024) macht das Limit unscharf.
-     * Erwartet: 1024 KB → 1024*1024 Bytes; 2048 KB → 2048*1024 Bytes.
+     * Die Validatoren rechnen in Byte (`UploadedFile::getSize()`), die Konfiguration speichert KB.
+     * Mit 1000 statt 1024 läge die Grenze rund zwei Prozent zu niedrig.
      */
     public function testByteConversion(): void
     {
@@ -30,11 +27,8 @@ final class PluginConfigTest extends TestCase
     }
 
     /**
-     * Was: `isExtensionAllowed` mit Groß-/Kleinschreibung.
-     * Warum: Datei-Endungen kommen aus Browser-Uploads in beliebiger Case.
-     *        Case-sensitive Vergleich würde `IMG.JPG` ablehnen, obwohl `jpg`
-     *        whitelisted ist.
-     * Erwartet: `pdf`, `PDF`, `Pdf` alle true; `jpg` (nicht whitelisted) false.
+     * Endungen kommen in beliebiger Schreibweise aus dem Browser. Ein Vergleich mit
+     * Groß- und Kleinschreibung wiese `IMG.JPG` ab, obwohl `jpg` erlaubt ist.
      */
     public function testExtensionMatchIsCaseInsensitive(): void
     {
@@ -47,11 +41,8 @@ final class PluginConfigTest extends TestCase
     }
 
     /**
-     * Was: `attachmentRetentionEnabled()` bei 0-Tagen und 30-Tagen.
-     * Warum: Service-Code prüft mit dieser Methode, ob der Retention-Cron etwas
-     *        tun soll. Eine kaputte Logik würde entweder dauerhaft löschen
-     *        (Wert 0 fälschlich „aktiv") oder gar nicht löschen.
-     * Erwartet: 0 Tage → false, 30 Tage → true.
+     * Die Aufbewahrungsbereinigung fragt diese Methode, ob sie laufen soll. Gälte 0 als aktiv,
+     * löschte sie mit einer Frist von null Tagen jeden Anhang; gälte 30 als aus, löschte sie nie.
      */
     public function testRetentionDisabledAtZero(): void
     {

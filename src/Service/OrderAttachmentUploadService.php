@@ -29,17 +29,15 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Throwable;
 
 /**
- * Nimmt einen `UploadedFile` aus dem Storefront-Controller, validiert, speichert
- * privat in Shopware-Media und legt einen {@see PendingUpload} in der Session ab.
+ * Nimmt eine hochgeladene Datei aus dem Storefront-Controller entgegen, prüft sie, speichert sie
+ * als privates Medium und merkt sie als {@see PendingUpload} in der Sitzung vor.
  *
- * Schreibvorgänge laufen unter `Context::SYSTEM_SCOPE`, weil der Customer (Guest
- * oder eingeloggt) keine direkte DAL-Berechtigung auf `media` hat. Der Scope-Wechsel
- * ist die explizite Vertrauensgrenze — der Service ist die einzige Stelle, die ihn
- * für Customer-Uploads nutzt.
+ * Geschrieben wird im Systemkontext, weil ein Kunde, ob Gast oder angemeldet, auf `media` keine
+ * Rechte hat. Dieser Dienst ist die einzige Stelle, die für Uploads von Kunden in den
+ * Systemkontext wechselt, und damit die Vertrauensgrenze.
  *
- * Physische Datei landet via {@see MediaService::saveMediaFile} unter dem privaten
- * Plugin-MediaFolder. Der Dateiname auf dem Filesystem wird komplett neu vergeben
- * (`rc-<uuid>`) — der Original-Filename steht ausschließlich in der DB als Label.
+ * Die Datei landet über {@see MediaService::saveMediaFile} im privaten Plugin-Ordner unter dem
+ * neuen Namen `rc-<uuid>`. Der ursprüngliche Name steht nur als Beschriftung in der Datenbank.
  */
 final class OrderAttachmentUploadService
 {
@@ -62,9 +60,9 @@ final class OrderAttachmentUploadService
 
     public function upload(UploadedFile $file, PluginConfig $config, Context $context): PendingUpload
     {
-        // Filename früh sanitisieren — derselbe Wert geht in Log-Context, Pending-Upload
-        // und später in Mail-Header. Defense-in-Depth gegen Log-Injection bei
-        // textbasierten Log-Handlern, die kein JSON-Encoding machen.
+        // Der Name wird vor allem anderen bereinigt, weil derselbe Wert ins Protokoll, in die Sitzung
+        // und später in die Kopfzeilen der Mail geht. Ein Protokoll als reiner Text ohne JSON nähme
+        // sonst eingeschleuste Zeilenumbrüche an.
         $sanitizedName = $this->filenameSanitizer->sanitize($file->getClientOriginalName());
 
         $correlationId = Uuid::randomHex();
@@ -95,11 +93,9 @@ final class OrderAttachmentUploadService
 
         $this->stripMetadataIfEnabled($file, $config, $logContext);
 
-        $mediaId = $this->persistFile($file, $context, $logContext);
+        $mediaId = $this->persistFile($file, $config->allowedExtensions, $context, $logContext);
         $token = Uuid::randomHex();
 
-        // Filename wurde oben einmalig sanitisiert — alle Konsumenten (Session,
-        // Mail-Header, Logging, DB) sehen denselben, bereinigten Wert.
         $upload = new PendingUpload(
             token: $token,
             mediaId: $mediaId,
@@ -109,22 +105,21 @@ final class OrderAttachmentUploadService
             uploadedAt: time(),
         );
 
-        // Fail-closed: Ohne Session kann die Datei später keiner Bestellung zugeordnet werden.
-        // Ein gemeldeter Erfolg zeigte dem Kunden seine Datei in der Liste, sie käme aber nie an
-        // der Bestellung an und verschwände nach Ablauf der Frist im Orphan-Cleanup. Deshalb
-        // wird das eben erzeugte Medium wieder gelöscht und der Fehler zurückgemeldet.
+        // Ohne Sitzung lässt sich die Datei später keiner Bestellung zuordnen. Als Erfolg gemeldet,
+        // sähe der Kunde seine Datei in der Liste, obwohl sie nie an der Bestellung ankäme. Das eben
+        // erzeugte Medium wird deshalb wieder gelöscht und der Fehler zurückgemeldet.
         if (!$this->pendingUploadStore->add($upload)) {
             $this->logger->error('rc_order_attachment.upload.no_session', $logContext + [
                 'mediaId' => $mediaId,
-                'hinweis' => 'Upload ohne Session -- Datei kann keiner Bestellung zugeordnet werden.',
+                'hint' => 'Upload ohne Session -- Datei kann keiner Bestellung zugeordnet werden.',
             ]);
 
             $this->deleteMediaSafely($mediaId, $context, $logContext);
 
-            $ergebnis = new ValidationResult();
-            $ergebnis->fail(ValidationCode::SESSION_UNAVAILABLE);
+            $result = new ValidationResult();
+            $result->fail(ValidationCode::SESSION_UNAVAILABLE);
 
-            throw new AttachmentUploadException([ValidationCode::SESSION_UNAVAILABLE->value], $ergebnis);
+            throw new AttachmentUploadException([ValidationCode::SESSION_UNAVAILABLE->value], $result);
         }
 
         $this->logger->info('rc_order_attachment.upload.success', $logContext + [
@@ -142,11 +137,9 @@ final class OrderAttachmentUploadService
             return;
         }
 
-        // Schutz gegen Datenverlust an abgeschlossenen Bestellungen: Der Fremdschlüssel
-        // `fk.rc_order_attachment.media_id` steht auf `ON DELETE CASCADE`. Ein Media-Delete
-        // würde den Anhang jeder Order mitreissen, die darauf zeigt. Sobald das Media an
-        // eine Bestellung gebunden ist, gehört es nicht mehr dem Pending-Store — der
-        // Session-Eintrag verschwindet, die Datei bleibt.
+        // Der Fremdschlüssel `fk.rc_order_attachment.media_id` löscht kaskadierend; mit dem Medium
+        // verschwände auch der Anhang jeder Bestellung, die darauf zeigt. Ist das Medium schon an
+        // eine Bestellung gebunden, fällt nur der Eintrag in der Sitzung weg, die Datei bleibt.
         if ($this->isBoundToOrder($upload->mediaId, $context)) {
             $this->logger->warning('rc_order_attachment.upload.remove_skipped_bound_media', [
                 'token' => $token,
@@ -168,10 +161,9 @@ final class OrderAttachmentUploadService
     }
 
     /**
-     * Prüft, ob das Media bereits über einen `rc_order_attachment`-Datensatz an eine
-     * Bestellung gebunden ist. Fail-closed: Bei einem DAL-Fehler wird `true` gemeldet,
-     * damit im Zweifel nichts gelöscht wird — ein verwaistes Media räumt der
-     * Orphan-Cleanup-Cron ab, ein zerstörter Bestell-Anhang ist unwiederbringlich.
+     * Meldet, ob das Medium über eine `rc_order_attachment`-Zeile an eine Bestellung gebunden ist.
+     * Scheitert die Abfrage, lautet die Antwort `true`, damit im Zweifel nichts gelöscht wird: Ein
+     * verwaistes Medium räumt die Aufräumaufgabe später ab, ein gelöschter Anhang ist verloren.
      */
     private function isBoundToOrder(string $mediaId, Context $context): bool
     {
@@ -219,18 +211,19 @@ final class OrderAttachmentUploadService
 
         $stripped = $this->exifStripper->stripInPlace($path, strtolower($file->getClientOriginalExtension()));
         if ($stripped) {
-            // Der Re-Encode hat die Datei-Größe verändert. Ohne Invalidierung
-            // liefert `UploadedFile::getSize()` (über `filesize()`) den gecachten
-            // Pre-Strip-Wert — der dann falsch in Media/PendingUpload landet.
+            // Das Neuschreiben hat die Dateigröße verändert. Ohne Leeren des Zwischenspeichers
+            // liefert `UploadedFile::getSize()` über `filesize()` noch die alte Größe, und die
+            // landete falsch in Medium und Sitzung.
             clearstatcache(true, $path);
             $this->logger->info('rc_order_attachment.upload.exif_stripped', $logContext);
         }
     }
 
     /**
+     * @param list<string>         $allowedExtensions die Endungen des Kanals, mit denen die Datei geprüft wurde
      * @param array<string, mixed> $logContext
      */
-    private function persistFile(UploadedFile $file, Context $context, array $logContext): string
+    private function persistFile(UploadedFile $file, array $allowedExtensions, Context $context, array $logContext): string
     {
         $rawExtension = $file->getClientOriginalExtension();
         $extension = strtolower($rawExtension !== '' ? $rawExtension : 'bin');
@@ -241,7 +234,7 @@ final class OrderAttachmentUploadService
 
         $mediaFile = new MediaFile($physicalPath, $mime, $extension, $size);
 
-        return $context->scope(Context::SYSTEM_SCOPE, function (Context $systemContext) use ($mediaFile, $internalName, $logContext): string {
+        return $context->scope(Context::SYSTEM_SCOPE, function (Context $systemContext) use ($mediaFile, $internalName, $allowedExtensions, $logContext): string {
             $folderId = $this->mediaFolderInstaller->findFolderId($systemContext)
                 ?? $this->mediaFolderInstaller->ensureFolder($systemContext);
 
@@ -256,6 +249,7 @@ final class OrderAttachmentUploadService
                 $mediaFile,
                 $internalName,
                 $mediaId,
+                $allowedExtensions,
                 $systemContext,
             );
 
@@ -269,22 +263,23 @@ final class OrderAttachmentUploadService
     }
 
     /**
-     * Speichert die Datei mit dem Herkunfts-Marker am Context, damit der
+     * Speichert die Datei mit dem Herkunftskennzeichen am Context, damit der
      * {@see \Ruhrcoder\RcOrderAttachment\Service\Subscriber\MediaWhitelistSubscriber}
-     * die Endungs-Whitelist genau für diesen Aufruf erweitert.
+     * die Endungsliste genau für diesen Aufruf erweitert.
      *
-     * Der Marker wird im `finally` wieder entfernt: Der Context lebt über den
-     * ganzen Request. Bliebe er stehen, würde ein späterer Media-Upload desselben
-     * Requests die Plugin-Endungen erneut erben — genau die shopweite Ausweitung,
-     * die der Marker verhindern soll.
+     * Das `finally` entfernt das Kennzeichen wieder, weil der Context über die ganze Anfrage lebt.
+     * Bliebe es stehen, erbte ein späterer Upload derselben Anfrage die Endungen des Plugins.
+     *
+     * @param list<string> $allowedExtensions die Endungen des Kanals, mit denen die Datei geprüft wurde
      */
     private function saveWithPluginWhitelist(
         MediaFile $mediaFile,
         string $internalName,
         string $mediaId,
+        array $allowedExtensions,
         Context $context,
     ): string {
-        $context->addExtension(OrderAttachmentUploadScope::NAME, new OrderAttachmentUploadScope());
+        $context->addExtension(OrderAttachmentUploadScope::NAME, new OrderAttachmentUploadScope($allowedExtensions));
 
         try {
             return $this->mediaService->saveMediaFile(
@@ -314,7 +309,7 @@ final class OrderAttachmentUploadService
                 $this->mediaRepository->delete([['id' => $mediaId]], $systemContext);
             });
         } catch (Throwable $exception) {
-            // Delete-Fehler dürfen den Customer-Pfad nicht brechen — der Orphan-Cleanup-Cron räumt später nach.
+            // Ein Fehler beim Löschen darf den Kunden nicht aufhalten; die Aufräumaufgabe holt es nach.
             $this->logger->warning('rc_order_attachment.upload.delete_failed', $logContext + [
                 'exception' => $exception::class,
                 'message' => $exception->getMessage(),

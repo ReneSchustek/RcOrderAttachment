@@ -33,76 +33,69 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
 
 /**
- * Prüft das Verhalten des Uploads, wenn keine Session zur Verfügung steht.
+ * Prüft den Upload ohne Sitzung. Die Datei landet dann in keinem Speicher offener Uploads und
+ * kann später keiner Bestellung zugeordnet werden.
  *
- * Ohne Session landet die Datei in keinem Pending-Store — sie könnte später also keiner
- * Bestellung zugeordnet werden. Meldete der Upload trotzdem Erfolg, sähe der Kunde seine
- * Datei in der Liste, ankommen würde sie nie, und nach Ablauf der Frist entfernte sie der
- * Orphan-Cleanup.
+ * Meldete der Upload trotzdem Erfolg, sähe der Kunde seine Datei in der Liste, angekommen wäre
+ * sie nie, und nach Ablauf der Frist räumte die Waisenbereinigung sie ab.
  */
 #[CoversClass(OrderAttachmentUploadService::class)]
 final class OrderAttachmentUploadServiceSessionTest extends TestCase
 {
-    private string $datei;
+    private string $tempFile;
 
     protected function setUp(): void
     {
-        $this->datei = sys_get_temp_dir() . '/rc-upload-' . uniqid('', true) . '.pdf';
-        file_put_contents($this->datei, "%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n");
+        $this->tempFile = sys_get_temp_dir() . '/rc-upload-' . uniqid('', true) . '.pdf';
+        file_put_contents($this->tempFile, "%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n");
     }
 
     protected function tearDown(): void
     {
-        if (is_file($this->datei)) {
-            unlink($this->datei);
+        if (is_file($this->tempFile)) {
+            unlink($this->tempFile);
         }
     }
 
     /**
-     * Was: Upload ohne Session.
-     * Warum: Eine Datei, die nirgends vermerkt ist, kann keiner Bestellung zugeordnet werden.
-     *        Erfolg zu melden wäre eine Lüge gegenüber dem Kunden.
-     * Erwartet: Ablehnung mit dem Code `sessionUnavailable` statt eines gültigen Uploads.
+     * Eine nirgends vermerkte Datei kann keiner Bestellung zugeordnet werden; der Upload wird
+     * deshalb mit `sessionUnavailable` abgelehnt, statt Erfolg zu melden.
      */
-    public function testUploadOhneSessionWirdAbgelehnt(): void
+    public function testUploadWithoutSessionIsRejected(): void
     {
-        $service = $this->service($this->storeOhneSession(), $this->createMock(EntityRepository::class));
+        $service = $this->service($this->storeWithoutSession(), $this->createMock(EntityRepository::class));
 
         try {
             $service->upload($this->uploadedFile(), $this->config(), Context::createDefaultContext());
             static::fail('Der Upload hätte abgelehnt werden müssen.');
-        } catch (AttachmentUploadException $ausnahme) {
-            static::assertSame(['sessionUnavailable'], $ausnahme->codes);
+        } catch (AttachmentUploadException $exception) {
+            static::assertSame(['sessionUnavailable'], $exception->codes);
         }
     }
 
     /**
-     * Was: Das bereits gespeicherte Medium bei fehlender Session.
-     * Warum: Sonst bliebe für jeden solchen Aufruf eine private Kundendatei liegen, die niemand
-     *        mehr zuordnen kann — bis der Cleanup sie Stunden später abräumt.
-     * Erwartet: Das Medium wird im selben Zug wieder gelöscht.
+     * Das schon gespeicherte Medium wird im selben Zug wieder gelöscht. Sonst bliebe je Aufruf
+     * eine private Kundendatei liegen, bis die Waisenbereinigung sie Stunden später abräumt.
      */
-    public function testMediumWirdBeiFehlenderSessionWiederGeloescht(): void
+    public function testTheMediaIsDeletedAgainWithoutSession(): void
     {
         $mediaRepository = $this->createMock(EntityRepository::class);
         $mediaRepository->expects(static::once())->method('delete');
 
-        $service = $this->service($this->storeOhneSession(), $mediaRepository);
+        $service = $this->service($this->storeWithoutSession(), $mediaRepository);
 
         try {
             $service->upload($this->uploadedFile(), $this->config(), Context::createDefaultContext());
         } catch (AttachmentUploadException) {
-            // erwartet -- geprüft wird der Aufräum-Aufruf oben
+            // Die Ablehnung ist erwartet, geprüft wird der Löschaufruf oben.
         }
     }
 
     /**
-     * Was: Derselbe Upload mit Session.
-     * Warum: Gegenprobe — die Ablehnung darf nur an der fehlenden Session hängen, nicht an der
-     *        Datei oder der Konfiguration.
-     * Erwartet: ein Pending-Upload mit dem sanitisierten Dateinamen.
+     * Gegenprobe: Mit Sitzung geht derselbe Upload durch. Die Ablehnung hängt also nur an der
+     * fehlenden Sitzung und nicht an Datei oder Konfiguration.
      */
-    public function testMitSessionLaeuftDerselbeUploadDurch(): void
+    public function testTheSameUploadPassesWithASession(): void
     {
         $session = new \Symfony\Component\HttpFoundation\Session\Session(
             new \Symfony\Component\HttpFoundation\Session\Storage\MockArraySessionStorage()
@@ -121,17 +114,16 @@ final class OrderAttachmentUploadServiceSessionTest extends TestCase
     }
 
     /**
-     * Ein Store, dessen RequestStack keinen Request mit Session hergibt — genau die Lage, in
-     * der `add()` nichts ablegen kann.
+     * Der `RequestStack` ist leer, es gibt also keine Sitzung, in der `add()` etwas ablegen könnte.
      */
-    private function storeOhneSession(): PendingUploadStore
+    private function storeWithoutSession(): PendingUploadStore
     {
         return new PendingUploadStore(new RequestStack());
     }
 
     private function uploadedFile(): UploadedFile
     {
-        return new UploadedFile($this->datei, 'nachweis.pdf', 'application/pdf', null, true);
+        return new UploadedFile($this->tempFile, 'nachweis.pdf', 'application/pdf', null, true);
     }
 
     private function config(): PluginConfig
@@ -159,14 +151,14 @@ final class OrderAttachmentUploadServiceSessionTest extends TestCase
     {
         $folderRepository = $this->createMock(EntityRepository::class);
 
-        // Der MediaService liefert im Betrieb die ID des gespeicherten Mediums zurück. Ein
-        // Double, das null liefert, lässt den Service mit leerer ID weiterlaufen -- dann
-        // greift der Uuid-Guard im Aufräumpfad und der Test scheitert am falschen Grund.
+        // Im Betrieb gibt der MediaService die ID des gespeicherten Mediums zurück. Lieferte das
+        // Double null, liefe der Dienst mit leerer ID weiter, die UUID-Prüfung im Aufräumweg
+        // griffe, und der Test scheiterte aus dem falschen Grund.
         $mediaService = $this->createMock(MediaService::class);
         $mediaService->method('saveMediaFile')->willReturnCallback(
-            // PHPUnit reicht die Argumente positionsbasiert weiter, auch wenn der Service sie
-            // benannt übergibt: 4 = mediaId (mediaFile, filename, context, folder, mediaId, private).
-            static fn (mixed ...$argumente): string => (string) ($argumente[4] ?? Uuid::randomHex())
+            // PHPUnit reicht die Argumente nach Position weiter, auch wenn der Dienst sie benannt
+            // übergibt. Index 4 ist `mediaId` (mediaFile, filename, context, folder, mediaId, private).
+            static fn (mixed ...$arguments): string => (string) ($arguments[4] ?? Uuid::randomHex())
         );
 
         return new OrderAttachmentUploadService(

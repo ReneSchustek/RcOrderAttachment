@@ -1,0 +1,21 @@
+datum;fassung;rechner;instanz;art;messung;ms;streuung
+2026-10-05;1.0.10;Testsystem;Kopie;seite;Hochladen 12mp;502;HTTP 200
+2026-10-05;1.0.10;Testsystem;Kopie;seite;Hochladen 24mp;632;HTTP 200
+2026-10-05;1.0.10;Testsystem;Kopie;seite;Hochladen 48mp;939;HTTP 200
+2026-10-05;1.0.10;Testsystem;Kopie;dienst;ExifStripperBench::benchStrip (12 Megapixel);140.983;±3.70% Speicher 13.048mb
+2026-10-05;1.0.10;Testsystem;Kopie;dienst;ExifStripperBench::benchStrip (24 Megapixel);278.236;±2.09% Speicher 13.048mb
+2026-10-05;1.0.10;Testsystem;Kopie;dienst;ExifStripperBench::benchStrip (48 Megapixel);557.738;±0.82% Speicher 13.048mb
+2026-10-05;1.0.10;Testsystem;Kopie;speicher;Prozessspeicher 12mp;117;MB, bearbeitet ja, GD extern
+2026-10-05;1.0.10;Testsystem;Kopie;speicher;Prozessspeicher 24mp;163;MB, bearbeitet ja, GD extern
+2026-10-05;1.0.10;Testsystem;Kopie;speicher;Prozessspeicher 48mp;254;MB, bearbeitet ja, GD extern
+2026-10-06;1.0.11;Testsystem;Kopie;seite;Hochladen 12mp;519;HTTP 200
+2026-10-06;1.0.11;Testsystem;Kopie;seite;Hochladen 24mp;640;HTTP 200
+2026-10-06;1.0.11;Testsystem;Kopie;seite;Hochladen 48mp;949;HTTP 200
+2026-10-06;1.0.11;Testsystem;Kopie;dienst;ExifStripperBench::benchStrip (12 Megapixel);140.768;±2.57% Speicher 13.048mb
+2026-10-06;1.0.11;Testsystem;Kopie;dienst;ExifStripperBench::benchStrip (24 Megapixel);285.247;±1.35% Speicher 13.048mb
+2026-10-06;1.0.11;Testsystem;Kopie;dienst;ExifStripperBench::benchStrip (48 Megapixel);560.630;±2.27% Speicher 13.048mb
+2026-10-06;1.0.11;Testsystem;Kopie;dienst;ExifStripperBench::benchStripPortrait;1116.591;±1.98% Speicher 13.048mb
+2026-10-06;1.0.11;Testsystem;Kopie;speicher;Prozessspeicher 12mp;117;MB, bearbeitet ja, GD extern
+2026-10-06;1.0.11;Testsystem;Kopie;speicher;Prozessspeicher 24mp;163;MB, bearbeitet ja, GD extern
+2026-10-06;1.0.11;Testsystem;Kopie;speicher;Prozessspeicher 48mp;254;MB, bearbeitet ja, GD extern
+2026-10-06;1.0.11;Testsystem;Kopie;speicher;Prozessspeicher 48mp-hochkant;437;MB, bearbeitet ja, GD extern

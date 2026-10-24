@@ -1,12 +1,25 @@
 {% sw_extends '@Storefront/storefront/page/checkout/confirm/index.html.twig' %}
 
+{# Die Karte braucht die Rasterspalte `checkout-additional`, die der Kern um seine eigene
+   Zusatzkarte legt. Ohne sie landet die Karte als nackter Flex-Kasten in der Rasterzeile, bei
+   1920 px Fensterbreite etwa halb so breit wie vorgesehen und nach links verschoben.
+
+   `{{ parent() }}` liefert die Spalte nur, wenn `core.cart.showCustomerComment` eingeschaltet ist;
+   ist die Einstellung aus, kommt von dort nichts. Die Karte bringt deshalb ihre eigene Spalte mit.
+   Zwei Spalten untereinander entsprechen dem Verhalten des Kerns bei zwei Zusatzkarten.
+
+   Der Kern prüft außerdem mit `sw_block('page_checkout_additional')|trim`, ob hier etwas steht,
+   und nimmt der Zusammenfassung dann ihren Versatz. Diese Prüfung schlägt durch die Karte ohnehin
+   an, also muss die Karte die Spalte auch füllen. #}
 {% block page_checkout_additional %}
     {{ parent() }}
 
     {% set rcAttachmentExt = page.extensions.rcOrderAttachmentUpload %}
     {% if rcAttachmentExt %}
-        {% sw_include '@Storefront/storefront/page/checkout/confirm/confirm-rc-order-attachment.html.twig' with {
-            rcAttachment: rcAttachmentExt
-        } only %}
+        <div class="checkout-additional">
+            {% sw_include '@Storefront/storefront/page/checkout/confirm/confirm-rc-order-attachment.html.twig' with {
+                rcAttachment: rcAttachmentExt
+            } only %}
+        </div>
     {% endif %}
 {% endblock %}

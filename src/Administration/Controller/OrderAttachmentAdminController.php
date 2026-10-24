@@ -17,17 +17,13 @@ use Symfony\Component\Routing\Attribute\Route;
 use Throwable;
 
 /**
- * Admin-API-Endpoint für den Anhang-Download an der Bestellung.
+ * Liefert den Anhang einer Bestellung über die Admin-API aus, damit ein Mitarbeiter das vom Kunden
+ * im Checkout hochgeladene Dokument direkt aus der Bestellansicht herunterladen kann. Die Datei
+ * liegt als privates Medium vor und ist über den Medienbrowser nicht erreichbar.
  *
- * Zweck: Ein Mitarbeiter mit Order-Lese-Recht kann das vom Customer im Checkout
- * hochgeladene Dokument direkt aus der Admin-Bestellung herunterladen, ohne den
- * Umweg über die Bestätigungs-Mail. Die Datei ist privates Media und über den
- * öffentlichen Medien-Browser nicht erreichbar.
- *
- * Autorisierung: `_acl: ['order:read']` — kein eigenes ACL-Recht, sondern das
- * Core-Order-Lese-Recht. Der eigentliche Media-Stream läuft im Service im
- * System-Scope, weil das private Media keine direkte Read-Berechtigung trägt;
- * die Zugangskontrolle sitzt damit ausschließlich an dieser Route.
+ * Die Route verlangt nur das Kernrecht `order:read` und kein eigenes Recht: Wer die Bestellung
+ * sehen darf, darf auch ihren Anhang sehen. Der Dienst liest das private Medium im Systemkontext,
+ * weil es keine eigene Leseberechtigung trägt. Die Zugangskontrolle sitzt damit allein an dieser Route.
  */
 #[Route(defaults: [PlatformRequest::ATTRIBUTE_ROUTE_SCOPE => ['api']])]
 final class OrderAttachmentAdminController
@@ -50,9 +46,9 @@ final class OrderAttachmentAdminController
         try {
             return $this->downloadService->streamForAdmin($attachmentId, $context);
         } catch (AttachmentNotFoundException | MediaNotLoadedException) {
-            // Anhang existiert nicht (mehr) oder das Media wurde bereits vom
-            // Retention-/Orphan-Cleanup entfernt: derselbe 404 für beide Fälle,
-            // damit kein Rückschluss auf die Existenz einzelner Datensätze möglich ist.
+            // Fehlt der Datensatz oder hat eine der beiden Aufräumaufgaben das Medium schon gelöscht,
+            // antwortet die Route in beiden Fällen gleich mit 404. So verrät sie nicht, welche
+            // Datensätze es gibt.
             return $this->errorResponse(
                 Response::HTTP_NOT_FOUND,
                 'RC_ORDER_ATTACHMENT__NOT_FOUND',

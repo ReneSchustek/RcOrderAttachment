@@ -21,11 +21,20 @@ use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Throwable;
 
 /**
+ * Löscht verwaiste Uploads aus dem Plugin-Ordner, die älter als die eingestellte Frist sind.
+ *
+ * Die Frist schützt Uploads, die noch in einer offenen Sitzung auf den Bestellabschluss warten.
+ * Wer sie kürzer stellt als die Zeit, die ein Kunde im Checkout verbringt, löscht Dateien, die
+ * die Bestellung gleich danach verknüpfen will.
+ *
  * @internal
  */
 #[AsMessageHandler(handles: OrphanedAttachmentCleanupTask::class)]
 final class OrphanedAttachmentCleanupTaskHandler extends ScheduledTaskHandler
 {
+    // Begrenzt Speicher und Dauer eines stündlichen Laufs; bei mehr verwaisten Uploads folgt der
+    // Rest im nächsten Lauf. Bis zu 12.000 Löschungen am Tag reichen weit über das Aufkommen
+    // eines Shops hinaus, in dem Kunden Dokumente zur Bestellung hochladen.
     private const BATCH_SIZE = 500;
 
     /**
@@ -51,12 +60,11 @@ final class OrphanedAttachmentCleanupTaskHandler extends ScheduledTaskHandler
         $folderId = $this->mediaFolderInstaller->findFolderId($context);
 
         if ($folderId === null) {
-            // Warnung, nicht debug: Der Medienordner wird über seinen NAMEN gesucht. Benennt
-            // ihn jemand im Medien-Manager um, findet der Cleanup ihn nicht mehr -- und
-            // hochgeladene Kundendateien blieben unbemerkt liegen, obwohl die Aufbewahrungs-
-            // frist etwas anderes verspricht. Auf debug war dieser Fall unsichtbar.
+            // Warnung statt Debug-Meldung: Ohne Ordner räumt die Aufgabe nichts ab, und
+            // Kundendateien blieben unbemerkt über die Frist hinaus liegen. Das kommt vor, wenn
+            // der vermerkte Ordner gelöscht und der Name in der Medienverwaltung geändert wurde.
             $this->logger->warning('rc_order_attachment.cleanup.orphans.no_folder', [
-                'hinweis' => 'Medienordner nicht gefunden -- wurde er im Medien-Manager umbenannt? '
+                'hint' => 'Medienordner nicht gefunden -- wurde er im Medien-Manager umbenannt? '
                     . 'Ohne ihn räumt der Cleanup keine verwaisten Uploads ab.',
             ]);
 
@@ -67,6 +75,7 @@ final class OrphanedAttachmentCleanupTaskHandler extends ScheduledTaskHandler
             ->modify(\sprintf('-%d hours', $config->orphanRetentionHours))
             ->format('Y-m-d H:i:s.v');
 
+        // Der LEFT JOIN findet Medien im Ordner, auf die keine Anhangszeile zeigt.
         $rows = $this->connection->fetchFirstColumn(
             <<<'SQL'
             SELECT LOWER(HEX(m.id)) AS id

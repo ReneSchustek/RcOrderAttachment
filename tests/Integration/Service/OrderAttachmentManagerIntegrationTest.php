@@ -16,12 +16,12 @@ use Shopware\Core\Framework\Test\TestCaseBase\IntegrationTestBehaviour;
 use Shopware\Core\Framework\Uuid\Uuid;
 
 /**
- * Integration-Test gegen echte DAL — verifiziert Schreib-/Lese-Round-Trip,
- * Cascade-Delete bei Order-Drop, Version-Filter-Greifen.
+ * Prüft Anlegen und Laden von Anhängen gegen die echte DAL: den Weg hin und zurück, das
+ * Mitlöschen beim Löschen der Bestellung, die Bereinigung des Dateinamens und den Versionsfilter.
+ * Mocks zeigen keinen dieser Punkte, weil sie an Fremdschlüsseln und Versionsspalten hängen.
  *
- * Voraussetzung: lebendes Shopware-Test-Bootstrap. Wird lokal über
- * `vendor/bin/phpunit --testsuite=Integration` oder gegen eine vollständige Installation via
- * `bin/phpunit` ausgeführt.
+ * Läuft nur mit gebootetem Shopware-Testkernel, etwa über
+ * `vendor/bin/phpunit --testsuite=Integration` in einer vollständigen Installation.
  */
 final class OrderAttachmentManagerIntegrationTest extends TestCase
 {
@@ -50,11 +50,7 @@ final class OrderAttachmentManagerIntegrationTest extends TestCase
     }
 
     /**
-     * Was: Anhang via Manager persistieren und via Loader wieder lesen.
-     * Warum: Integration-Smoke-Test — DAL-Schreib-/Leseweg muss durchlaufen,
-     *        inkl. UUID-Generierung und Versions-Filter.
-     * Erwartet: ID gesetzt, Filename round-trippt, `loadById` findet den
-     *           gerade angelegten Datensatz.
+     * Rauchprobe für den Schreib- und Leseweg samt ID-Vergabe und Versionsfilter.
      */
     public function testAttachAndLoadRoundTrip(): void
     {
@@ -70,7 +66,7 @@ final class OrderAttachmentManagerIntegrationTest extends TestCase
             context: $this->context,
         );
 
-        self::assertNotNull($attachment->getId());
+        self::assertNotSame('', $attachment->getId());
         self::assertSame('drawing.pdf', $attachment->getOriginalFileName());
 
         $loaded = $this->loader->loadById($attachment->getId(), $this->context);
@@ -78,11 +74,8 @@ final class OrderAttachmentManagerIntegrationTest extends TestCase
     }
 
     /**
-     * Was: Order löschen — verbundene Anhänge müssen via DB-FK-Cascade
-     *      verschwinden.
-     * Warum: DSGVO-Pflicht und Datenintegrität — Orphan-Anhänge ohne Order
-     *        wären sowohl ein Speicher- als auch ein Auskunfts-Problem.
-     * Erwartet: Nach `order.delete` ist der Anhang nicht mehr in der DAL.
+     * Anhänge ohne Bestellung wären ein Speicher- und ein DSGVO-Problem, deshalb muss der
+     * Fremdschlüssel mit Kaskade sie beim Löschen der Bestellung mitnehmen.
      */
     public function testCascadeDeleteOnOrderDrop(): void
     {
@@ -106,25 +99,21 @@ final class OrderAttachmentManagerIntegrationTest extends TestCase
         $afterDelete = $this->attachmentRepository->search(
             new \Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria([$attachment->getId()]),
             $this->context,
-        )->first();
+        )->getEntities()->first();
 
         self::assertNull($afterDelete, 'Attachment muss per FK-Cascade gelöscht werden');
     }
 
     /**
-     * Was: Filename mit U+202E (Right-to-Left-Override) durch den Manager
-     *      und in die DAL.
-     * Warum: End-to-End-Test der Sanitization — Unit-Tests prüfen den
-     *        Sanitizer isoliert, aber wir wollen sichergehen, dass der
-     *        Manager ihn auch wirklich aufruft, bevor er in die DAL schreibt.
-     * Erwartet: Im DAL-Datensatz ist die Bidi-Sequenz nicht mehr enthalten.
+     * Die Unit-Tests prüfen den Bereiniger für sich. Erst hier zeigt sich, dass der Manager ihn
+     * aufruft, bevor er schreibt; sonst gäbe sich `….exe` in der Verwaltung als `….jpg` aus.
      */
     public function testFilenameWithBidiOverrideIsSanitized(): void
     {
         $orderId = $this->createTestOrder();
         $mediaId = $this->createTestMedia();
 
-        // U+202E (Right-to-Left Override) zwischen den Wörtern
+        // U+202E kehrt die Leserichtung um, angezeigt wird daraus „cuteexe.jpg".
         $attackName = "cute\xE2\x80\xAEgpj.exe";
 
         $attachment = $this->manager->attach(
@@ -140,13 +129,9 @@ final class OrderAttachmentManagerIntegrationTest extends TestCase
     }
 
     /**
-     * Was: Anhang wird erst an die Live-Version, dann wird die Order mit einer
-     *      neuen Version geforkt — der Filter im Loader muss nur den Live-Stand
-     *      sehen.
-     * Warum: Senior-Falle bei Shopware-Versioning — ohne `orderVersionId`-Filter
-     *        sieht die Account-Page Draft-Anhänge oder Anhänge aus Admin-
-     *        Edit-Sessions, die noch nicht „committed" sind.
-     * Erwartet: Loader liefert nur die Live-Anhänge.
+     * Shopware legt beim Bearbeiten einer Bestellung in der Verwaltung eine eigene Version an.
+     * Ohne Filter auf `orderVersionId` zeigte die Kontoseite Anhänge aus solchen Entwürfen, die
+     * noch nicht übernommen sind.
      */
     public function testOrderVersionFilterIgnoresDraftAttachments(): void
     {
@@ -156,14 +141,13 @@ final class OrderAttachmentManagerIntegrationTest extends TestCase
         // Anhang an die Live-Version
         $this->manager->attach($orderId, $mediaId, 'live.pdf', 'application/pdf', 100, $this->context);
 
-        // Echte zweite Order-Version anlegen — die `createVersion`-API schreibt
-        // einen `(order_id, version_id)`-Eintrag in `order`, damit der FK des
-        // Draft-Anhangs greifen kann. Ohne diese Version würde der DAL-Insert
-        // mit Integrity-Constraint-Violation abbrechen.
+        // `createVersion()` schreibt die Zeile `(order_id, version_id)` in `order`, auf die der
+        // Fremdschlüssel des Entwurfsanhangs zeigt. Ohne sie bricht das Einfügen mit einer
+        // Verletzung der Integritätsbedingung ab.
         $draftVersionId = static::repository('order.repository')->createVersion($orderId, $this->context);
 
-        // Direkter Schreib-Test in Draft-Version umgehen den Manager — wir simulieren
-        // einen Draft-Anhang via Repository direkt.
+        // Der Manager schreibt an die Version, die der Kontext sieht, hier also an die
+        // Live-Version. Der Entwurfsanhang geht deshalb direkt über das Repository.
         $draftAttachmentId = Uuid::randomHex();
         $draftMediaId = $this->createTestMedia();
         $this->attachmentRepository->create([[
@@ -184,14 +168,11 @@ final class OrderAttachmentManagerIntegrationTest extends TestCase
 
     private function createTestOrder(): string
     {
-        // Erzeugt eine Test-Order via Shopware-Test-Fixture-Helpers.
-        // Implementation hängt von der konkreten Shopware-Test-Bootstrap-Variante ab.
-        // Alternativ: `OrderFixture` aus `shopware/core/Test/Fixtures` oder eigene Mini-Order.
         $orderId = Uuid::randomHex();
         // Die Rechnungsadresse muss im selben Schreibvorgang entstehen und von
-        // `billingAddressId` referenziert werden. Eine lose UUID ohne passenden Datensatz
-        // lässt den Fremdschlüssel greifen — der Test brach dann mit einem Fehler ab,
-        // statt das zu prüfen, wofür er da ist.
+        // `billingAddressId` referenziert werden. Mit einer losen UUID ohne passenden
+        // Datensatz greift der Fremdschlüssel, und der Test bricht ab, bevor er prüft,
+        // wofür er da ist.
         $billingAddressId = Uuid::randomHex();
         static::repository('order.repository')->create([[
             'id' => $orderId,
@@ -217,7 +198,7 @@ final class OrderAttachmentManagerIntegrationTest extends TestCase
                 'calculatedTaxes' => [],
                 'taxRules' => [],
             ],
-            // Shopware 6.7+ verlangt CashRoundingConfig für Order-Entity (Pflichtfelder).
+            // Shopware 6.7 verlangt beide Rundungsangaben als Pflichtfelder der Bestellung.
             'totalRounding' => [
                 'decimals' => 2,
                 'interval' => 0.01,

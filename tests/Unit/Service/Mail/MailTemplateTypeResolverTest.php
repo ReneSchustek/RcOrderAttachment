@@ -17,22 +17,18 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\EntitySearchResult;
 
 /**
- * Unit-Tests für die Auflösung `mailTemplateId` → Mail-Template-Type-`technicalName`.
+ * Prüft die Auflösung einer `templateId` zum `technicalName` ihres Vorlagentyps. Shopware
+ * liefert im `MailBeforeValidateEvent` nur die ID, die Freigabeliste des Plugins arbeitet mit
+ * dem technischen Namen, und der Resolver ist die einzige Stelle dazwischen.
  *
- * Pattern: echte Resolver-Instanz, gemockte Shopware-Boundary (`EntityRepository`).
- * Der Resolver ist die einzige Stelle, die weiß, dass Shopware im
- * `MailBeforeValidateEvent` nur eine `templateId` liefert — der Rest des Plugins
- * arbeitet mit dem technischen Namen.
+ * Der Resolver ist echt, gemockt ist nur das `EntityRepository`.
  */
 final class MailTemplateTypeResolverTest extends TestCase
 {
     private const TEMPLATE_ID = '33333333333333333333333333333333';
 
     /**
-     * Was: Gültige Template-ID, Template hat einen Type mit `technicalName`.
-     * Warum: Der Kernvertrag — ohne diese Auflösung matcht die Mail-Whitelist
-     *        niemals ihren Default `order_confirmation_mail`.
-     * Erwartet: `order_confirmation_mail`.
+     * Ohne diese Auflösung trifft die Freigabeliste nie ihre Vorgabe `order_confirmation_mail`.
      */
     public function testResolvesTechnicalName(): void
     {
@@ -45,10 +41,7 @@ final class MailTemplateTypeResolverTest extends TestCase
     }
 
     /**
-     * Was: `null` bzw. eine syntaktisch ungültige ID.
-     * Warum: Guard-Clause vor dem DAL-Roundtrip; eine kaputte ID darf keine
-     *        Exception aus der DAL provozieren.
-     * Erwartet: `null`, ohne dass das Repository befragt wird.
+     * Eine fehlende oder kaputte ID wird vor dem Repository abgefangen, sonst würfe die DAL.
      */
     public function testReturnsNullForMissingOrInvalidId(): void
     {
@@ -63,10 +56,8 @@ final class MailTemplateTypeResolverTest extends TestCase
     }
 
     /**
-     * Was: Template existiert nicht mehr (gelöscht) oder hat keinen Type.
-     * Warum: Fail-closed — der Aufrufer darf keinen Anhang an eine Mail hängen,
-     *        deren Typ unbekannt ist.
-     * Erwartet: `null`.
+     * Ist die Vorlage gelöscht oder ohne Typ, liefert der Resolver `null`. Eine Mail unbekannten
+     * Typs bekommt damit keinen Anhang.
      */
     public function testReturnsNullWhenTemplateOrTypeMissing(): void
     {
@@ -77,10 +68,7 @@ final class MailTemplateTypeResolverTest extends TestCase
     }
 
     /**
-     * Was: Die DAL wirft (DB weg, Scope-Problem).
-     * Warum: Ein Lookup-Fehler darf den Mail-Versand nicht abbrechen — die Mail
-     *        soll rausgehen, nur eben ohne Anhang.
-     * Erwartet: `null` statt Exception.
+     * Scheitert die Abfrage, geht die Mail trotzdem hinaus, nur ohne Anhang.
      */
     public function testReturnsNullAndSwallowsLookupFailure(): void
     {
@@ -93,10 +81,8 @@ final class MailTemplateTypeResolverTest extends TestCase
     }
 
     /**
-     * Was: Zweimalige Auflösung derselben ID.
-     * Warum: `MailBeforeValidateEvent` feuert pro Mail; ohne Cache entstünde je
-     *        Mail ein zusätzlicher DAL-Roundtrip im Versand-Hot-Path.
-     * Erwartet: Genau ein `search`-Aufruf, beide Male dasselbe Ergebnis.
+     * `MailBeforeValidateEvent` kommt bei jeder Mail. Ohne Zwischenspeicher kostete jede eine
+     * weitere Datenbankabfrage im Versandweg.
      */
     public function testCachesLookupPerTemplateId(): void
     {
@@ -108,16 +94,19 @@ final class MailTemplateTypeResolverTest extends TestCase
         $resolver = new MailTemplateTypeResolver($repository, new NullLogger());
         $context = Context::createDefaultContext();
 
-        self::assertSame('order_confirmation_mail', $resolver->resolveTechnicalName(self::TEMPLATE_ID, $context));
-        self::assertSame('order_confirmation_mail', $resolver->resolveTechnicalName(self::TEMPLATE_ID, $context));
+        // Die Ergebnisse stehen in Variablen, weil die statische Analyse zwei gleiche Aufrufe in
+        // einer Zusicherung für denselben Wert hält und den Vergleich als immer wahr meldet.
+        $first = $resolver->resolveTechnicalName(self::TEMPLATE_ID, $context);
+        $second = $resolver->resolveTechnicalName(self::TEMPLATE_ID, $context);
+
+        self::assertSame('order_confirmation_mail', $first);
+        self::assertSame($first, $second);
     }
 
     /**
-     * Was: `reset()` nach einer Auflösung.
-     * Warum: Im Worker-Mode (Swoole/RoadRunner/FrankenPHP) überlebt der Service
-     *        den Request. Ein nicht geleerter Cache würde ein zwischenzeitlich
-     *        geändertes Template-Type-Mapping über Requests hinweg festhalten.
-     * Erwartet: Nach `reset()` wird erneut gegen die DAL gefragt.
+     * In einem langlebigen Worker (Swoole, RoadRunner, FrankenPHP) überlebt der Dienst die
+     * Anfrage. Ohne `reset()` hielte der Zwischenspeicher eine geänderte Zuordnung über Anfragen
+     * hinweg fest.
      */
     public function testResetClearsCache(): void
     {

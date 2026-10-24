@@ -7,9 +7,8 @@ namespace Ruhrcoder\RcOrderAttachment\Service\Validation;
 use Ruhrcoder\RcOrderAttachment\Service\Config\PluginConfig;
 
 /**
- * Erzwingt die Maximalzahl an Anhängen pro Bestellung. Der Zähler kommt aus
- * der Session und ist `>=`-vergleich, damit der gerade hochzuladende Slot
- * (= +1) noch in den Quote-Vergleich eingeht.
+ * Begrenzt die Zahl der Anhänge je Bestellung. Der Zähler kommt aus der Sitzung und enthält die
+ * neue Datei noch nicht; deshalb lehnt schon `>=` ab.
  */
 final class FileCountValidator
 {

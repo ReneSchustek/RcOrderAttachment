@@ -7,11 +7,11 @@ namespace Ruhrcoder\RcOrderAttachment\ScheduledTask;
 use Shopware\Core\Framework\MessageQueue\ScheduledTask\ScheduledTask;
 
 /**
- * Räumt private Media-Records des Plugin-Folders auf, die nicht über ein
- * `rc_order_attachment`-Datensatz an eine Order gebunden sind.
+ * Löscht private Medien im Plugin-Ordner, die über keine `rc_order_attachment`-Zeile an eine
+ * Bestellung gebunden sind.
  *
- * Schutz davor, dass Customer-Uploads ohne anschließenden Order-Abschluss
- * (Session-Timeout, Cart-Abbruch) dauerhaft auf dem Server bleiben.
+ * Ohne diese Aufgabe blieben Uploads von Kunden, die den Checkout abbrechen oder deren Sitzung
+ * abläuft, dauerhaft auf dem Server liegen.
  */
 final class OrphanedAttachmentCleanupTask extends ScheduledTask
 {
@@ -22,6 +22,7 @@ final class OrphanedAttachmentCleanupTask extends ScheduledTask
 
     public static function getDefaultInterval(): int
     {
-        return 3600; // stündlich
+        // Stündlich, weil die Frist für verwaiste Uploads in Stunden zählt.
+        return 3600;
     }
 }

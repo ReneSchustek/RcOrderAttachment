@@ -8,12 +8,11 @@ use Ruhrcoder\RcOrderAttachment\Service\Config\PluginConfig;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 /**
- * Begrenzt die Summe der bereits hochgeladenen + der neuen Datei.
+ * Begrenzt die Summe aus schon hochgeladenen Dateien und der neuen.
  *
- * Schutz gegen einen DoS-Vektor: Customer könnte sonst dutzende kleine Dateien
- * unter dem `maxFileSizeKb`-Limit hochladen, deren Summe das Plugin-Disk-Limit
- * sprengt. Wir prüfen erst gegen den Projected-Total (bestehende Bytes + Neue),
- * weil das Limit semantisch „pro Bestellung", nicht „pro Datei" gilt.
+ * Ohne diese Grenze könnte ein Kunde viele Dateien knapp unter `maxFileSizeKb` hochladen und so
+ * weit mehr Speicher belegen als vorgesehen. Verglichen wird die Summe einschließlich der neuen
+ * Datei, weil die Grenze für die ganze Bestellung gilt.
  */
 final class TotalSizeValidator
 {
@@ -24,6 +23,7 @@ final class TotalSizeValidator
         ValidationResult $result,
     ): void {
         $size = $file->getSize();
+        // Eine leere oder abgebrochene Datei meldet schon der FileSizeValidator.
         if ($size === false || $size <= 0) {
             return;
         }

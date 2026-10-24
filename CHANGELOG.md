@@ -1,5 +1,82 @@
 # Changelog
 
+## [1.0.11] - 2026-10-06: Befunde aus der Kommentar-Durchsicht
+
+> **Deployment:** `php bin/console plugin:update RcOrderAttachment && php bin/console cache:clear`,
+> danach `assets:install` und `theme:compile` für das geänderte Storefront-Skript.
+
+### Behoben
+
+- **Hochkantfotos stehen aufrecht.** Beim Entfernen der Metadaten ging die EXIF-Ausrichtung verloren;
+  ein Foto, das nur über sie aufrecht stand, kam quer beim Betrieb an. Die Ausrichtung wird jetzt vor
+  dem Entfernen gelesen und ins Bild selbst übernommen.
+- **Eine nur im Verkaufskanal freigegebene Endung geht durch.** Die Freigabe an den Kern las die
+  kanalübergreifende Einstellung; eine Datei, die die Prüfung des Kanals bestand, scheiterte danach im
+  Kern mit einem Serverfehler.
+- **Bei der Deinstallation verschwinden auch vorgemerkte und verwaiste Uploads.** Gelöscht wurden nur
+  Dateien mit Bestellung; die übrigen blieben ohne Ordner in der Medienverwaltung liegen.
+- **Mehrere abgewiesene Dateien stehen zusammen da, je mit Namen.** Bisher löschte der Erfolg der
+  nächsten Datei den Grund der vorigen, und ein Fehler überschrieb den anderen.
+- **Abgelaufene Sitzung:** Der Kunde sah den Code „sessionUnavailable" statt eines Satzes.
+- **Die Sperre nach zu vielen Uploads endet eine Minute nach dem ersten**, statt sich mit jedem
+  weiteren Upload zu verlängern.
+- **Ein Anhang, dessen Datei schon gelöscht ist, ergibt im Kundenkonto 404 statt 500**, wie in der
+  Verwaltung.
+- Der Vermerk des Medienordners legte bei jedem Neuschreiben eine weitere Konfigurationszeile an;
+  das Lesen konnte die alte treffen.
+- Hilfetexte: Der englische Text zur Aufbewahrungsfrist nannte „abgeschlossene Bestellungen", die Frist
+  gilt aber ab dem Upload. Beim Entfernen der Metadaten waren HEIC und Imagick genannt; HEIC bleibt
+  unverändert, genutzt wird nur GD.
+
+### Intern
+
+- Tests prüfen jetzt, was sie behaupten: EXIF verschwindet wirklich (der Test setzt einen EXIF-Block
+  ins JPEG), Transparenz bleibt erhalten. Der Mailtest legt seine Bestellung mit echter
+  Rechnungsadresse an. Englische Bezeichner und Testnamen in allen Tests.
+- Wächter: Jeder Prüfcode hat einen Text in Vorlage und Übersetzungen.
+- Messprojekt: ein 48-MP-Hochkantfoto als eigener Messpunkt. Das Drehen kostet: 1,1 s und 437 MB
+  Prozessspeicher statt 0,56 s und 254 MB für dasselbe Foto quer (Kopie des Shops, 06.10.).
+
+## [Unveröffentlicht]: Messprojekt
+
+Ohne Wirkung im Shop; nichts davon kommt ins Ausrollpaket.
+
+### Intern
+
+- **Messprojekt `benchmarks/`** mit PHPBench und einer Messung des Hochladens über HTTP, Ablage je
+  Lauf in `benchmarks/results.csv`. Ausgangswerte vom 05.10. auf einer Kopie des Shops: Hochladen eines Fotos
+  502 ms (12 MP), 632 ms (24 MP), 939 ms (48 MP); davon das Entfernen der Metadaten 141, 278 und
+  558 ms; Prozessspeicher dabei 117, 163 und 254 MB.
+- Wächter im Testlauf: Ein Foto mit 6 MP wird in unter zwei Sekunden bearbeitet.
+- PHPStan und PHP CS Fixer prüfen auch `benchmarks/`.
+
+## [1.0.10] - 2026-10-05: Die Pflicht zum Anhang gilt nur in der Storefront
+
+> **Deployment:** `php bin/console plugin:update RcOrderAttachment && php bin/console cache:clear`.
+> Kein Storefront-Bau nötig.
+
+### Behoben
+
+- **Bestellungen über die Store-API und aus dem Verwaltungsbereich werden nicht mehr gesperrt.** Bei
+  eingeschalteter Pflicht scheiterten sie ohne Anhang, obwohl es dort keine Seite zum Hochladen gibt.
+  Die Ausnahme hing an der Sitzung, und die tragen auch Schnittstellenaufrufe. Jetzt entscheidet der
+  Routenbereich der Anfrage; in der Storefront bleibt die Pflicht unverändert.
+
+## [1.0.9] - 2026-08-24: Die Anhang-Karte steht wieder im Raster
+
+> **Deployment:** `php bin/console plugin:update RcOrderAttachment && php bin/console cache:clear`.
+> Kein Storefront-Bau nötig.
+
+### Behoben
+
+- **Die Karte „Dokumente anhängen“ stand außerhalb des Rasters.** Sie hing ohne Spaltenklasse in der Rasterzeile der Bestätigungsseite und war dadurch nur halb so breit wie der Bereich darüber, um 233 Pixel nach links verschoben, und rechts daneben blieb rund ein Drittel der Seite leer. Nebenbei nahm sie der Bestellübersicht ihren Versatz, ohne die freigewordene Spalte zu füllen. Die Karte steht jetzt in der Spalte, die Shopware für Zusatzangaben vorsieht, mit und ohne eingeschalteten Kundenkommentar.
+
+## [1.0.8] - 2026-08-10: Vorbereitet auf die nächste Shopware-Hauptversion
+
+### Geändert
+
+- **Vorbereitung auf die nächste Shopware-Hauptversion.** Der Zugriff auf Suchergebnisse folgt der Schreibweise, die Shopware 6.8 verlangt. Am Verhalten ändert sich nichts.
+
 ## [1.0.7] - 2026-07-30: Der Medienordner wird über seine Kennung wiedererkannt
 
 ### Behoben

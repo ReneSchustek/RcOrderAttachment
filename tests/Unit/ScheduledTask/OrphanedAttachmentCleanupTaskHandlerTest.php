@@ -17,10 +17,10 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\IdSearchResult;
 use Shopware\Core\System\SystemConfig\SystemConfigService;
 
 /**
- * Unit-Tests der Kontrollflüsse des Orphan-Cleanups (Guard-Branches, destruktiver
- * Delete-Pfad, Fail-Soft). Die SQL-Korrektheit des Orphan-Selects (LEFT JOIN auf
- * `rc_order_attachment`, Cutoff) ist per Mock nicht prüfbar und bleibt einem
- * Integration-Test vorbehalten.
+ * Prüft den Kontrollfluss der Waisenbereinigung: fehlender Plugin-Ordner, leeres Ergebnis, das
+ * Löschen selbst und dass ein Fehler beim Löschen den geplanten Lauf nicht abbricht. Ob die
+ * Abfrage die richtigen Zeilen liefert, lässt sich per Mock nicht prüfen; das übernimmt
+ * `OrphanedAttachmentCleanupQueryTest`.
  */
 final class OrphanedAttachmentCleanupTaskHandlerTest extends TestCase
 {
@@ -29,10 +29,8 @@ final class OrphanedAttachmentCleanupTaskHandlerTest extends TestCase
     private const MEDIA_B = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
 
     /**
-     * Was: Der Plugin-Media-Folder existiert nicht.
-     * Warum: Ohne Folder gibt es keine Orphans zu räumen — es darf nichts gelöscht
-     *        werden (Schutz vor versehentlichem Löschen fremder Media).
-     * Erwartet: Kein `media`-Delete.
+     * Ohne Plugin-Ordner gibt es keine Uploads des Plugins und damit nichts zu löschen; jedes
+     * Medium, das der Lauf dann träfe, gehörte jemand anderem.
      */
     public function testNoFolderSkipsDeletion(): void
     {
@@ -46,9 +44,7 @@ final class OrphanedAttachmentCleanupTaskHandlerTest extends TestCase
     }
 
     /**
-     * Was: Folder existiert, aber der Orphan-Select liefert nichts.
-     * Warum: Leeres Ergebnis darf keinen leeren Delete auslösen.
-     * Erwartet: Kein `media`-Delete.
+     * Ein leeres Ergebnis darf keinen leeren Löschaufruf auslösen.
      */
     public function testEmptyResultSkipsDeletion(): void
     {
@@ -62,10 +58,7 @@ final class OrphanedAttachmentCleanupTaskHandlerTest extends TestCase
     }
 
     /**
-     * Was: Der Orphan-Select liefert zwei verwaiste Media-IDs.
-     * Warum: DESTRUKTIVER Pfad — genau diese IDs (und nur diese) müssen gelöscht
-     *        werden. Gegenprobe: fehlte der Delete-Aufruf, bliebe der Test rot.
-     * Erwartet: `media.delete` mit beiden IDs als Payload.
+     * Gelöscht werden genau die IDs, die die Abfrage liefert, und keine anderen.
      */
     public function testDeletesOrphanedMedia(): void
     {
@@ -88,10 +81,8 @@ final class OrphanedAttachmentCleanupTaskHandlerTest extends TestCase
     }
 
     /**
-     * Was: Das Media-Delete wirft.
-     * Warum: Ein Cleanup-Fehler darf den Cron nicht abbrechen (der nächste Lauf
-     *        holt es nach) — Fail-Soft mit Log.
-     * Erwartet: Keine Exception propagiert.
+     * Ein Fehler beim Löschen wird protokolliert und bricht den geplanten Lauf nicht ab; der
+     * nächste Lauf holt das Löschen nach.
      */
     public function testDeleteFailureIsSwallowed(): void
     {
@@ -101,9 +92,11 @@ final class OrphanedAttachmentCleanupTaskHandlerTest extends TestCase
         $mediaRepository = $this->createMock(EntityRepository::class);
         $mediaRepository->method('delete')->willThrowException(new RuntimeException('db down'));
 
-        $this->handler($connection, $mediaRepository)->run();
+        // Bestanden ist der Test, wenn der Lauf ohne Ausnahme zurückkehrt. PHPUnit erwartet dafür
+        // diese Angabe; eine Zusicherung auf `true` prüfte nichts.
+        $this->expectNotToPerformAssertions();
 
-        self::assertTrue(true, 'run() darf trotz Delete-Fehler nicht werfen');
+        $this->handler($connection, $mediaRepository)->run();
     }
 
     /**

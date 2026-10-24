@@ -44,25 +44,23 @@ jobs:
       # Regel-Wächter. Läuft ohne Shopware-Kernel und ist damit im
       # Plugin-Standalone-Checkout tatsächlich wirksam.
       #
-      # Vorgeschichte: hier standen Schritte `vendor/bin/console lint:twig` und
-      # `lint:xml`. `vendor/bin/console` existiert in einem Plugin-Repository nie
-      # (die Shopware-Console liegt im Shop, nicht im Plugin), also sprang immer
-      # der `else`-Zweig an und der Schritt meldete grün, ohne irgendetwas zu
-      # prüfen. Genau dadurch blieb der Aufruf einer in Shopware 6.5 entfernten
-      # Twig-Funktion (`sw_csrf`) unentdeckt, bis er die Confirm-Page zerlegte.
+      # `vendor/bin/console lint:twig` taugt hier nicht: Die Shopware-Console liegt
+      # im Shop, nicht im Plugin-Repository. Ein Schritt, der sie aufruft, fiele
+      # still in seinen `else`-Zweig und meldete grün, ohne etwas zu prüfen; ein
+      # Aufruf von `sw_csrf` bliebe dann unentdeckt, bis er die Confirm-Page zerlegt.
       - name: Regel-Wächter (entfernte APIs, Error-Suppression, XML/JSON)
         run: |
           set -euo pipefail
           fail=0
 
           echo "── Entfernte Shopware-APIs (>= 6.5) ──"
-          # sw_csrf + CSRF-Layer wurden mit Shopware 6.5 ersatzlos entfernt.
+          # Shopware 6.7 hat keinen CSRF-Layer; `sw_csrf` bricht das Kompilieren der Vorlage ab.
           if grep -rn --include='*.twig' --include='*.js' -E '\bsw_csrf\s*\(' src; then
             echo "FEHLER: sw_csrf existiert seit Shopware 6.5 nicht mehr (Twig-Compile-Fehler)."
             fail=1
           fi
           # Nur echte Code-Nutzung (Import/Instanziierung) — ein Kommentar, der
-          # erklärt, warum es die Klasse nicht mehr gibt, ist erwünscht.
+          # erklärt, warum die Klasse fehlt, ist erwünscht.
           if grep -rn --include='*.php' -E '^[[:space:]]*use[[:space:]].*CsrfPlaceholderHandler|new[[:space:]]+CsrfPlaceholderHandler' src; then
             echo "FEHLER: CsrfPlaceholderHandler existiert seit Shopware 6.5 nicht mehr."
             fail=1

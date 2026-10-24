@@ -13,11 +13,13 @@ use Symfony\Component\HttpFoundation\Session\Session;
 use Symfony\Component\HttpFoundation\Session\Storage\MockArraySessionStorage;
 
 /**
- * Unit-Tests für den Session-Store der Pending-Uploads. Round-Trip (add/get/remove),
- * Persistenz über Session-Serialisierung, Defensive-Reads bei Müll-Sessions.
+ * Prüft den Sitzungsspeicher der offenen Uploads: Ablegen, Lesen und Entfernen, den Weg durch
+ * die Serialisierung und das Lesen beschädigter Sitzungsdaten. Aus diesem Speicher entstehen
+ * beim Bestellabschluss die Anhänge.
  */
 final class PendingUploadStoreTest extends TestCase
 {
+    // Ein beliebiger fester Zeitstempel (November 2023), damit der Test nicht von der Uhr abhängt.
     private const FIXED_UPLOADED_AT = 1_700_000_000;
 
     private RequestStack $stack;
@@ -37,10 +39,8 @@ final class PendingUploadStoreTest extends TestCase
     }
 
     /**
-     * Was: Unter dem Session-Key liegt Müll (kein Array).
-     * Warum: Manipulierte/korrupte Session darf keinen Type-Error auslösen —
-     *        `loadList()` muss defensiv auf leere Liste zurückfallen.
-     * Erwartet: `all()` leer, `count()` = 0.
+     * Eine beschädigte oder manipulierte Sitzung darf keinen Typfehler auslösen. Steht unter dem
+     * Schlüssel kein Array, gilt die Liste als leer.
      */
     public function testDefensiveReadOnNonArraySession(): void
     {
@@ -51,11 +51,8 @@ final class PendingUploadStoreTest extends TestCase
     }
 
     /**
-     * Was: Die Session-Liste enthält neben einem gültigen Eintrag kaputte
-     *      (Nicht-Array-Payload, nicht-string-Token, unvollständige Daten).
-     * Warum: Ein einzelner korrupter Eintrag darf nicht die ganze Liste
-     *        unbrauchbar machen — nur der gültige Eintrag überlebt.
-     * Erwartet: Genau der gültige Eintrag bleibt.
+     * Ein einzelner kaputter Eintrag (kein Array, Zahl als Token, unvollständig) darf die übrige
+     * Liste nicht unbrauchbar machen.
      */
     public function testDefensiveReadSkipsInvalidEntries(): void
     {
@@ -73,10 +70,7 @@ final class PendingUploadStoreTest extends TestCase
     }
 
     /**
-     * Was: Upload hinzufügen und über Token/Counter/Total-Bytes/Media-IDs auslesen.
-     * Warum: Kern-API des Stores — wenn das Round-Trip kaputt ist, gehen alle
-     *        Confirm-Page- und Mail-Pfade kaputt.
-     * Erwartet: Counter `1`, Bytes `2048`, identisches Upload-Objekt, Media-ID-Liste.
+     * Bestätigungsseite, Grenzprüfung und Bestellabschluss lesen alle über diese Schnittstelle.
      */
     public function testAddAndRetrieve(): void
     {
@@ -90,11 +84,8 @@ final class PendingUploadStoreTest extends TestCase
     }
 
     /**
-     * Was: Zwei Uploads hinzufügen, einen entfernen.
-     * Warum: Customer kann auf der Confirm-Page einzelne Dateien wieder entfernen.
-     *        Der Store muss die richtige Datei finden und nur diese rauswerfen.
-     * Erwartet: `remove` gibt das entfernte Upload zurück, Counter `1`,
-     *           `get('a')` ist `null`.
+     * Auf der Bestätigungsseite entfernt der Kunde einzelne Dateien. Nur die gewählte geht, und
+     * `remove()` gibt sie zurück, damit der Aufrufer ihr Medium löschen kann.
      */
     public function testRemove(): void
     {
@@ -111,11 +102,8 @@ final class PendingUploadStoreTest extends TestCase
     }
 
     /**
-     * Was: Store leeren via `clear()`.
-     * Warum: Pflicht nach Order-Placement und beim Worker-Mode-Reset. Reste in
-     *        der Session würden bei der nächsten Bestellung als „bereits da"
-     *        erscheinen — Datenleak und doppelter Mail-Anhang.
-     * Erwartet: Counter `0`, Bytes `0`, `all()` leer.
+     * Nach dem Bestellabschluss wird der Speicher geleert. Reste erschienen bei der nächsten
+     * Bestellung als schon hochgeladen und hingen ein zweites Mal an.
      */
     public function testClear(): void
     {
@@ -129,11 +117,8 @@ final class PendingUploadStoreTest extends TestCase
     }
 
     /**
-     * Was: `PendingUpload::jsonSerialize()` und `fromArray()` als Round-Trip.
-     * Warum: Die Session serialisiert/deserialisiert das Upload-Struct über
-     *        die JSON-Schicht — wenn ein Feld verloren geht, gibt's bei
-     *        Session-Reload ein kaputtes Upload-Objekt.
-     * Erwartet: Alle Felder bleiben gleich nach `fromArray(jsonSerialize())`.
+     * In der Sitzung liegt der Upload als Array. Geht auf dem Weg hin und zurück ein Feld
+     * verloren, ist er beim nächsten Seitenaufruf unvollständig.
      */
     public function testSerializationRoundTrip(): void
     {
@@ -149,11 +134,8 @@ final class PendingUploadStoreTest extends TestCase
     }
 
     /**
-     * Was: `fromArray` mit leerem Payload und Type-Mismatch.
-     * Warum: Defense-in-Depth — wenn Session-Daten manipuliert oder durch
-     *        Versions-Wechsel inkompatibel werden, darf `fromArray` keinen
-     *        Half-Initialized-Upload zurückgeben (`null` als Signal).
-     * Erwartet: `null` bei leerem Array und bei Feld mit falschem Typ.
+     * Manipulierte oder nach einem Update unpassende Sitzungsdaten ergeben `null` statt eines
+     * halb gefüllten Uploads.
      */
     public function testFromArrayRejectsInvalidPayload(): void
     {

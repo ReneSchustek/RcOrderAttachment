@@ -8,11 +8,11 @@ use Ruhrcoder\RcOrderAttachment\Core\Content\OrderAttachment\OrderAttachmentColl
 use Shopware\Core\Framework\Struct\Struct;
 
 /**
- * Wird je Order an die Account-Order-Page angehängt. Twig rendert die Liste
- * der hochgeladenen Anhänge mit Download-Link.
+ * Hängt an jeder Bestellung in der Bestellübersicht des Kundenkontos; die Vorlage zeigt daraus die
+ * Anhänge mit Download-Link.
  *
- * Erfüllt DSGVO Art. 15 (Auskunft): Customer sieht im Kundenkonto, welche
- * Dateien zu seiner Bestellung gespeichert sind.
+ * So sieht der Kunde, welche Dateien zu seiner Bestellung gespeichert sind (Auskunft nach
+ * Art. 15 DSGVO).
  */
 final class AccountAttachmentsStruct extends Struct
 {
