@@ -263,7 +263,7 @@ Speicher wird eigens gemessen: Ist GD extern eingebunden, zählt PHP die Pixel n
 
 ## Lizenz
 
-MIT
+Proprietär – siehe [composer.json](composer.json).
 
 ---
 

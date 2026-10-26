@@ -2,7 +2,7 @@
     "name": "ruhrcoder/rc-order-attachment",
     "description": "Shopware 6 Plugin — Customer lädt im Checkout Dokumente hoch (Zeichnungen, Skizzen, Pläne), die an die Bestell-Bestätigungs-Mail angehängt werden.",
     "type": "shopware-platform-plugin",
-    "license": "MIT",
+    "license": "proprietary",
     "version": "1.0.11",
     "authors": [
         {"name": "René Schustek", "email": "info@ruhrcoder.de", "homepage": "https://ruhrcoder.de", "role": "Developer"}
