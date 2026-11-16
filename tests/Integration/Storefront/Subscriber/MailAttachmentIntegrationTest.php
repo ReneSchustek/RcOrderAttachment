@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Ruhrcoder\RcOrderAttachment\Tests\Integration\Storefront\Subscriber;
 
-use Ruhrcoder\RcOrderAttachment\Service\Config\PluginConfigProvider;
 use Ruhrcoder\RcOrderAttachment\Service\Mail\MailTemplateTypeResolverInterface;
+use Ruhrcoder\RcOrderAttachment\Service\Mail\ShopAttachmentMail;
 use Ruhrcoder\RcOrderAttachment\Service\OrderAttachmentManagerInterface;
 use Ruhrcoder\RcOrderAttachment\Storefront\Subscriber\MailBeforeValidateSubscriber;
 use Ruhrcoder\RcOrderAttachment\Tests\Integration\IntegrationTestCase;
@@ -37,16 +37,8 @@ final class MailAttachmentIntegrationTest extends IntegrationTestCase
      * Ohne Auflösung der `templateId` zum `technicalName` des Vorlagentyps bleibt
      * `binAttachments` leer, und der Support bekommt die Kundendatei nie.
      */
-    public function testCustomerUploadIsAttachedToOrderConfirmationMail(): void
+    public function testTheCustomerConfirmationCarriesNoAttachment(): void
     {
-        // Eine leere Freigabeliste ließe jede Mail durch, und der Test bewiese nichts. Er läuft
-        // deshalb nur gegen die vorgegebene Liste.
-        $config = static::service(PluginConfigProvider::class)
-            ->getForSalesChannel($this->getValidSalesChannelId());
-        self::assertFalse($config->mailTemplateWhitelistEmpty(), 'Test muss gegen eine aktive Whitelist laufen');
-        self::assertSame(['order_confirmation_mail'], $config->mailTemplateWhitelist);
-        self::assertTrue($config->enabled && $config->attachToConfirmationMail);
-
         $orderId = $this->createTestOrder();
         $mediaId = $this->createStoredMedia();
 
@@ -73,20 +65,7 @@ final class MailAttachmentIntegrationTest extends IntegrationTestCase
 
         $data = $event->getData();
 
-        self::assertArrayHasKey(
-            MailBeforeValidateSubscriber::DATA_KEY_BIN_ATTACHMENTS,
-            $data,
-            'Der Anhang muss an der Bestätigungs-Mail hängen — sonst bekommt der Support die Datei nicht.',
-        );
-
-        $binAttachments = $data[MailBeforeValidateSubscriber::DATA_KEY_BIN_ATTACHMENTS] ?? null;
-        self::assertIsArray($binAttachments);
-        self::assertCount(1, $binAttachments);
-        $attachment = $binAttachments[0] ?? null;
-        self::assertIsArray($attachment);
-        self::assertSame('kundenzeichnung.pdf', $attachment['fileName']);
-        self::assertSame('application/pdf', $attachment['mimeType']);
-        self::assertSame(self::ATTACHMENT_CONTENT, $attachment['content']);
+        self::assertArrayNotHasKey(MailBeforeValidateSubscriber::DATA_KEY_BIN_ATTACHMENTS, $data, 'Seit 1.1.0 bekommt der Kunde keine Anhänge mehr.');
     }
 
     /**
@@ -129,7 +108,7 @@ final class MailAttachmentIntegrationTest extends IntegrationTestCase
      * durch `MailService::send()`, den echten Dispatcher (und damit die Registrierung des
      * Subscribers im Container), die Datenprüfung und die `MailFactory` bis zur fertigen Mail.
      */
-    public function testMailServiceBuildsEmailWithCustomerAttachment(): void
+    public function testMailServiceBuildsTheShopMailWithTheCustomerAttachment(): void
     {
         $orderId = $this->createTestOrder();
         $mediaId = $this->createStoredMedia();
@@ -152,12 +131,12 @@ final class MailAttachmentIntegrationTest extends IntegrationTestCase
                 'subject' => 'Ihre Bestellung',
                 'contentHtml' => '<p>Danke für Ihre Bestellung.</p>',
                 'contentPlain' => 'Danke für Ihre Bestellung.',
-                'templateId' => $this->orderConfirmationTemplateId(),
+                'templateId' => $this->templateIdByType(ShopAttachmentMail::TEMPLATE_TYPE),
             ],
             $this->context,
             [
-                'eventName' => 'checkout.order.placed',
                 'order' => $this->loadOrder($orderId),
+                ShopAttachmentMail::DATA_KEY => ['attach' => true],
             ],
         );
 

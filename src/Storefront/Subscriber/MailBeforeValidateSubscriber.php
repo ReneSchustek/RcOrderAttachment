@@ -11,6 +11,7 @@ use Ruhrcoder\RcOrderAttachment\Service\Config\PluginConfigProvider;
 use Ruhrcoder\RcOrderAttachment\Service\Exception\MediaNotLoadedException;
 use Ruhrcoder\RcOrderAttachment\Service\Mail\MailAttachmentStatusTrackerInterface;
 use Ruhrcoder\RcOrderAttachment\Service\Mail\MailTemplateTypeResolverInterface;
+use Ruhrcoder\RcOrderAttachment\Service\Mail\ShopAttachmentMail;
 use Ruhrcoder\RcOrderAttachment\Service\OrderAttachmentLoader;
 use Shopware\Core\Checkout\Order\OrderEntity;
 use Shopware\Core\Content\MailTemplate\Service\Event\MailBeforeValidateEvent;
@@ -22,19 +23,14 @@ use Symfony\Component\Messenger\MessageBusInterface;
 use Throwable;
 
 /**
- * Hängt die Uploads einer Bestellung an die freigegebenen Mailvorlagen, als Vorgabe nur an
- * `order_confirmation_mail`.
+ * Hängt die Uploads einer Bestellung an die Mail an den Shop ({@see ShopAttachmentMail}), sonst an keine Mail.
  *
- * Angehängt wird nur, wenn die Vorlagendaten eine Bestellung enthalten, Plugin und
- * `attachToConfirmationMail` eingeschaltet sind und die Vorlage in der Liste erlaubter Vorlagen
- * steht (eine leere Liste erlaubt alle). Die Liste verhindert, dass jede Statusmail zur Bestellung
- * (Versand, Storno, Erstattung) die Dateien erneut mitschickt und eine Bestellung mit 20 MB
- * Anhängen jedes Postfach mehrfach füllt.
+ * Bis 1.0.12 bekam die Bestellbestätigung die Dateien und damit auch der Kunde. Seit 1.1.0 geht die Bestätigung ohne
+ * Anhang hinaus, und der Shop bekommt eine eigene Mail. Angehängt wird nur, wenn der Vorlagentyp der Mail der des Shops
+ * ist und die Vorlagendaten es erlauben; sind die Dateien zu groß, nennt die Mail sie nur.
  *
- * Shopware gibt im Ereignis keinen Schlüssel `mailTemplate` mit, sondern nur `eventName` in den
- * Vorlagendaten und `templateId` in den Maildaten. Der {@see MailTemplateTypeResolverInterface}
- * ermittelt daraus den `technicalName`. Würde nur `eventName` geprüft, träfe die Vorgabe
- * `order_confirmation_mail` nie, und kein Anhang ginge hinaus.
+ * Shopware gibt im Ereignis nur die `templateId` mit. Der {@see MailTemplateTypeResolverInterface} ermittelt daraus
+ * den `technicalName`.
  *
  * Das Ergebnis landet im Zusatzfeld `rc_order_attachment_mail_status` (siehe
  * {@see MailAttachmentStatusTrackerInterface}). Ist `enableMailRetry` eingeschaltet, plant ein
@@ -75,22 +71,12 @@ final class MailBeforeValidateSubscriber implements EventSubscriberInterface
             return;
         }
 
-        // Zwei Kandidaten, weil Shopware im Ereignis nur die `templateId` mitgibt: der daraus
-        // ermittelte Vorlagentyp (`order_confirmation_mail`, die Vorgabe) und der Name des
-        // Flow-Ereignisses (`checkout.order.placed`), falls jemand ihn in der Verwaltung einträgt.
         $technicalName = $this->templateTypeResolver->resolveTechnicalName(
             $this->extractTemplateId($event->getData()),
             $event->getContext(),
         );
-        $eventName = $this->extractEventName($event->getTemplateData());
-
-        if (!$config->isMailTemplateAllowed($technicalName, $eventName)) {
-            $this->logger->debug('rc_order_attachment.mail.template_not_whitelisted', [
-                'orderId' => $order->getId(),
-                'technicalName' => $technicalName,
-                'eventName' => $eventName,
-            ]);
-
+        $shopMail = $event->getTemplateData()[ShopAttachmentMail::DATA_KEY] ?? null;
+        if ($technicalName !== ShopAttachmentMail::TEMPLATE_TYPE || !\is_array($shopMail) || ($shopMail['attach'] ?? false) !== true) {
             return;
         }
 
@@ -165,19 +151,6 @@ final class MailBeforeValidateSubscriber implements EventSubscriberInterface
         $templateId = $data['templateId'] ?? null;
 
         return \is_string($templateId) && $templateId !== '' ? $templateId : null;
-    }
-
-    /**
-     * Name des Flow-Ereignisses, etwa `checkout.order.placed`, den `SendMailAction` als
-     * `eventName` in die Vorlagendaten legt.
-     *
-     * @param array<string, mixed> $templateData
-     */
-    private function extractEventName(array $templateData): ?string
-    {
-        $eventName = $templateData['eventName'] ?? null;
-
-        return \is_string($eventName) && $eventName !== '' ? $eventName : null;
     }
 
     /**

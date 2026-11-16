@@ -256,9 +256,12 @@ final class CheckoutOrderPlacedSubscriberTest extends TestCase
 
         $dispatched = null;
         $bus = $this->createMock(MessageBusInterface::class);
-        $bus->expects(self::once())->method('dispatch')->willReturnCallback(
+        // Die eine verknüpfte Datei geht an den Shop, die andere kommt in den Wiederholversuch.
+        $bus->expects(self::exactly(2))->method('dispatch')->willReturnCallback(
             static function (object $message) use (&$dispatched): Envelope {
-                $dispatched = $message;
+                if ($message instanceof RetryOrderAttachmentLinkMessage) {
+                    $dispatched = $message;
+                }
 
                 return new Envelope($message);
             },

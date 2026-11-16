@@ -39,6 +39,8 @@ final readonly class PluginConfig
         public int $rateLimitPerMinute,
         public array $mailTemplateWhitelist,
         public bool $enableMailRetry = false,
+        public string $shopMailRecipient = '',
+        public int $shopMailMaxSizeKb = 20480,
     ) {
     }
 

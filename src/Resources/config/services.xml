@@ -208,6 +208,17 @@
             <tag name="messenger.message_handler"/>
         </service>
 
+        <service id="Ruhrcoder\RcOrderAttachment\MessageHandler\SendShopAttachmentMailHandler">
+            <argument type="service" id="Ruhrcoder\RcOrderAttachment\Service\OrderAttachmentLoader"/>
+            <argument type="service" id="order.repository"/>
+            <argument type="service" id="mail_template.repository"/>
+            <argument type="service" id="Shopware\Core\Content\Mail\Service\MailService"/>
+            <argument type="service" id="Ruhrcoder\RcOrderAttachment\Service\Config\PluginConfigProvider"/>
+            <argument type="service" id="Shopware\Core\System\SystemConfig\SystemConfigService"/>
+            <argument type="service" id="logger"/>
+            <tag name="messenger.message_handler"/>
+        </service>
+
         <service id="Ruhrcoder\RcOrderAttachment\MessageHandler\RetryFailedMailAttachmentsHandler">
             <argument type="service" id="Ruhrcoder\RcOrderAttachment\Service\OrderAttachmentLoader"/>
             <argument type="service" id="Shopware\Core\Content\Media\MediaService"/>

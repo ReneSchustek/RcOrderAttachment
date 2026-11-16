@@ -113,20 +113,29 @@
 
         <input-field type="bool">
             <name>attachToConfirmationMail</name>
-            <label lang="de-DE">An Bestätigungs-Mail anhängen</label>
-            <label lang="en-GB">Attach to confirmation email</label>
-            <helpText lang="de-DE">Hängt die hochgeladenen Dateien automatisch an die Bestell-Bestätigungs-E-Mail an.</helpText>
-            <helpText lang="en-GB">Automatically attaches uploaded files to the order confirmation email.</helpText>
+            <label lang="de-DE">Dateien per Mail an den Shop</label>
+            <label lang="en-GB">Send files to the shop by e-mail</label>
+            <helpText lang="de-DE">Schickt die hochgeladenen Dateien einer Bestellung in einer eigenen Mail an den Shop. Die Bestellbestätigung an den Kunden geht immer ohne Anhang hinaus.</helpText>
+            <helpText lang="en-GB">Sends the uploaded files of an order to the shop in a separate e-mail. The order confirmation to the customer never carries attachments.</helpText>
             <defaultValue>true</defaultValue>
         </input-field>
 
         <input-field type="text">
-            <name>mailTemplateWhitelist</name>
-            <label lang="de-DE">Mail-Template-Technical-Names (kommagetrennt)</label>
-            <label lang="en-GB">Mail template technical names (comma-separated)</label>
-            <helpText lang="de-DE">Anhänge werden nur an Mails dieser Mail-Template-Types gehängt (kommagetrennt). Leer oder nur ungültige Werte fallen sicher auf den Default order_confirmation_mail zurück — das verhindert Mehrfach-Versand bei Order-State-Changes (Versand, Storno).</helpText>
-            <helpText lang="en-GB">Attachments are added only to mails of these template types (comma-separated). Empty or only invalid values safely fall back to the default order_confirmation_mail — this prevents duplicate sends on order state changes (shipping, cancellation).</helpText>
-            <defaultValue>order_confirmation_mail</defaultValue>
+            <name>shopMailRecipient</name>
+            <label lang="de-DE">Empfänger der Mail an den Shop</label>
+            <label lang="en-GB">Recipient of the shop e-mail</label>
+            <helpText lang="de-DE">Leer: die E-Mail-Adresse aus den Grundeinstellungen des Shops.</helpText>
+            <helpText lang="en-GB">Empty: the e-mail address from the shop's basic information.</helpText>
+        </input-field>
+
+        <input-field type="int">
+            <name>shopMailMaxSizeKb</name>
+            <label lang="de-DE">Größte Summe der Anhänge in der Mail an den Shop (KB)</label>
+            <label lang="en-GB">Maximum total size of attachments in the shop e-mail (KB)</label>
+            <helpText lang="de-DE">Darüber nennt die Mail die Dateien nur, herunterladen lassen sie sich in der Verwaltung an der Bestellung. Vorgabe 20 MB (20480).</helpText>
+            <helpText lang="en-GB">Above this the e-mail only lists the files; they can be downloaded from the order in the administration. Default 20 MB (20480).</helpText>
+            <defaultValue>20480</defaultValue>
+            <min>0</min>
         </input-field>
 
         <input-field type="bool">

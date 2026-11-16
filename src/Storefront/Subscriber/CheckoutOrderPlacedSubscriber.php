@@ -6,6 +6,7 @@ namespace Ruhrcoder\RcOrderAttachment\Storefront\Subscriber;
 
 use Psr\Log\LoggerInterface;
 use Ruhrcoder\RcOrderAttachment\Message\RetryOrderAttachmentLinkMessage;
+use Ruhrcoder\RcOrderAttachment\Message\SendShopAttachmentMailMessage;
 use Ruhrcoder\RcOrderAttachment\Service\OrderAttachmentManagerInterface;
 use Ruhrcoder\RcOrderAttachment\Service\Session\PendingUpload;
 use Ruhrcoder\RcOrderAttachment\Service\Session\PendingUploadStore;
@@ -108,6 +109,10 @@ final class CheckoutOrderPlacedSubscriber implements EventSubscriberInterface, R
             'snapshot' => \count($this->snapshot),
             'attached' => $attached,
         ]);
+
+        if ($attached > 0) {
+            $this->messageBus->dispatch(new SendShopAttachmentMailMessage($orderId));
+        }
 
         // Scheitert das Verknüpfen, etwa an einem vorübergehenden Datenbankfehler, gingen die
         // Dateien für die Bestellung still verloren. Die Medien existieren schon, also holt ein

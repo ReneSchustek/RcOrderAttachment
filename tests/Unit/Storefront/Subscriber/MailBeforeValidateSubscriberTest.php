@@ -11,6 +11,7 @@ use Ruhrcoder\RcOrderAttachment\Core\Content\OrderAttachment\OrderAttachmentEnti
 use Ruhrcoder\RcOrderAttachment\Service\Config\PluginConfigProvider;
 use Ruhrcoder\RcOrderAttachment\Service\Mail\MailAttachmentStatusTrackerInterface;
 use Ruhrcoder\RcOrderAttachment\Service\Mail\MailTemplateTypeResolverInterface;
+use Ruhrcoder\RcOrderAttachment\Service\Mail\ShopAttachmentMail;
 use Ruhrcoder\RcOrderAttachment\Service\OrderAttachmentLoader;
 use Ruhrcoder\RcOrderAttachment\Storefront\Subscriber\MailBeforeValidateSubscriber;
 use Shopware\Core\Checkout\Order\OrderEntity;
@@ -45,6 +46,8 @@ final class MailBeforeValidateSubscriberTest extends TestCase
     private const TEMPLATE_ID = '22222222222222222222222222222222';
 
     private const TYPE_ORDER_CONFIRMATION = 'order_confirmation_mail';
+
+    private const TYPE_SHOP = ShopAttachmentMail::TEMPLATE_TYPE;
 
     /**
      * Erste Vorbedingung: Mails ohne Bestellung, etwa ein Newsletter, bekommen keine Anhänge.
@@ -99,13 +102,13 @@ final class MailBeforeValidateSubscriberTest extends TestCase
             configOverrides: [],
             statusTracker: $tracker,
             mediaContent: 'BINARY-CONTENT',
-            resolvedTechnicalName: self::TYPE_ORDER_CONFIRMATION,
+            resolvedTechnicalName: self::TYPE_SHOP,
         );
 
         $event = new MailBeforeValidateEvent(
             ['templateId' => self::TEMPLATE_ID],
             Context::createDefaultContext(),
-            ['order' => $this->order(), 'eventName' => self::EVENT_ORDER_PLACED],
+            ['order' => $this->order(), 'eventName' => self::EVENT_ORDER_PLACED, ShopAttachmentMail::DATA_KEY => ['attach' => true]],
         );
 
         $sub->onMailBeforeValidate($event);
@@ -128,13 +131,13 @@ final class MailBeforeValidateSubscriberTest extends TestCase
             attachments: [$this->attachmentWithoutMedia('dddddddddddddddddddddddddddddddd', 'kaputt.pdf')],
             configOverrides: [],
             statusTracker: $tracker,
-            resolvedTechnicalName: self::TYPE_ORDER_CONFIRMATION,
+            resolvedTechnicalName: self::TYPE_SHOP,
         );
 
         $event = new MailBeforeValidateEvent(
             ['templateId' => self::TEMPLATE_ID],
             Context::createDefaultContext(),
-            ['order' => $this->order(), 'eventName' => self::EVENT_ORDER_PLACED],
+            ['order' => $this->order(), 'eventName' => self::EVENT_ORDER_PLACED, ShopAttachmentMail::DATA_KEY => ['attach' => true]],
         );
 
         $sub->onMailBeforeValidate($event);
@@ -156,13 +159,13 @@ final class MailBeforeValidateSubscriberTest extends TestCase
             configOverrides: [],
             statusTracker: $tracker,
             mediaContent: 'BINARY-CONTENT',
-            resolvedTechnicalName: self::TYPE_ORDER_CONFIRMATION,
+            resolvedTechnicalName: self::TYPE_SHOP,
         );
 
         $event = new MailBeforeValidateEvent(
             ['someExisting' => 'value', 'templateId' => self::TEMPLATE_ID],
             Context::createDefaultContext(),
-            ['order' => $this->order(), 'eventName' => self::EVENT_ORDER_PLACED],
+            ['order' => $this->order(), 'eventName' => self::EVENT_ORDER_PLACED, ShopAttachmentMail::DATA_KEY => ['attach' => true]],
         );
 
         $sub->onMailBeforeValidate($event);
@@ -185,7 +188,7 @@ final class MailBeforeValidateSubscriberTest extends TestCase
             attachments: [$this->attachment('bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'foo.pdf', 'application/pdf')],
             configOverrides: [],
             mediaContent: 'blob',
-            resolvedTechnicalName: self::TYPE_ORDER_CONFIRMATION,
+            resolvedTechnicalName: self::TYPE_SHOP,
         );
 
         $existing = [
@@ -196,7 +199,7 @@ final class MailBeforeValidateSubscriberTest extends TestCase
         $event = new MailBeforeValidateEvent(
             $existing,
             Context::createDefaultContext(),
-            ['order' => $this->order(), 'eventName' => self::EVENT_ORDER_PLACED],
+            ['order' => $this->order(), 'eventName' => self::EVENT_ORDER_PLACED, ShopAttachmentMail::DATA_KEY => ['attach' => true]],
         );
         $sub->onMailBeforeValidate($event);
 
@@ -238,13 +241,13 @@ final class MailBeforeValidateSubscriberTest extends TestCase
             attachments: [$this->attachment('a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1', 'zeichnung.pdf', 'application/pdf')],
             configOverrides: ['mailTemplateWhitelist' => self::TYPE_ORDER_CONFIRMATION],
             mediaContent: 'PDF-BYTES',
-            resolvedTechnicalName: self::TYPE_ORDER_CONFIRMATION,
+            resolvedTechnicalName: self::TYPE_SHOP,
         );
 
         $event = new MailBeforeValidateEvent(
             ['templateId' => self::TEMPLATE_ID],
             Context::createDefaultContext(),
-            ['order' => $this->order(), 'eventName' => self::EVENT_ORDER_PLACED],
+            ['order' => $this->order(), 'eventName' => self::EVENT_ORDER_PLACED, ShopAttachmentMail::DATA_KEY => ['attach' => true]],
         );
 
         $sub->onMailBeforeValidate($event);
@@ -272,7 +275,7 @@ final class MailBeforeValidateSubscriberTest extends TestCase
         $event = new MailBeforeValidateEvent(
             ['templateId' => self::TEMPLATE_ID],
             Context::createDefaultContext(),
-            ['order' => $this->order(), 'eventName' => self::EVENT_ORDER_PLACED],
+            ['order' => $this->order(), 'eventName' => self::EVENT_ORDER_PLACED, ShopAttachmentMail::DATA_KEY => ['attach' => true]],
         );
 
         $sub->onMailBeforeValidate($event);
@@ -281,27 +284,53 @@ final class MailBeforeValidateSubscriberTest extends TestCase
     }
 
     /**
-     * Das Feld in der Verwaltung ist Freitext, und `checkout.order.placed` ist eine plausible
-     * Eingabe. Auch der Ereignisname greift deshalb, obwohl der Resolver hier nichts liefert.
+     * Was: Die Bestellbestätigung an den Kunden.
+     * Warum: BRIEF66. Der Kunde hat die Dateien selbst, und große Anhänge ließen am 09.11.2026 beide Bestellmails scheitern.
+     * Erwartet: kein Anhang, auch wenn alles andere passt.
      */
-    public function testAcceptsFlowEventNameAsWhitelistEntry(): void
+    public function testTheCustomerConfirmationNeverCarriesAttachments(): void
     {
         $sub = $this->subscriber(
             attachments: [$this->attachment('a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3', 'plan.pdf', 'application/pdf')],
-            configOverrides: ['mailTemplateWhitelist' => self::EVENT_ORDER_PLACED],
+            configOverrides: [],
             mediaContent: 'blob',
-            resolvedTechnicalName: null,
+            resolvedTechnicalName: self::TYPE_ORDER_CONFIRMATION,
         );
 
         $event = new MailBeforeValidateEvent(
-            [],
+            ['templateId' => self::TEMPLATE_ID],
             Context::createDefaultContext(),
-            ['order' => $this->order(), 'eventName' => self::EVENT_ORDER_PLACED],
+            ['order' => $this->order(), 'eventName' => self::EVENT_ORDER_PLACED, ShopAttachmentMail::DATA_KEY => ['attach' => true]],
         );
 
         $sub->onMailBeforeValidate($event);
 
-        self::assertCount(1, self::binAttachments($event));
+        self::assertArrayNotHasKey(MailBeforeValidateSubscriber::DATA_KEY_BIN_ATTACHMENTS, $event->getData());
+    }
+
+    /**
+     * Was: Die Mail an den Shop, aber die Dateien sind zu groß.
+     * Warum: Darüber nennt die Mail sie nur, sonst scheiterte sie selbst an der Größengrenze.
+     * Erwartet: kein Anhang.
+     */
+    public function testTheShopMailCarriesNoAttachmentsWhenTheyAreTooBig(): void
+    {
+        $sub = $this->subscriber(
+            attachments: [$this->attachment('a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4', 'plan.pdf', 'application/pdf')],
+            configOverrides: [],
+            mediaContent: 'blob',
+            resolvedTechnicalName: self::TYPE_SHOP,
+        );
+
+        $event = new MailBeforeValidateEvent(
+            ['templateId' => self::TEMPLATE_ID],
+            Context::createDefaultContext(),
+            ['order' => $this->order(), ShopAttachmentMail::DATA_KEY => ['attach' => false]],
+        );
+
+        $sub->onMailBeforeValidate($event);
+
+        self::assertArrayNotHasKey(MailBeforeValidateSubscriber::DATA_KEY_BIN_ATTACHMENTS, $event->getData());
     }
 
     /**
@@ -328,13 +357,13 @@ final class MailBeforeValidateSubscriberTest extends TestCase
             configOverrides: ['enableMailRetry' => true],
             statusTracker: $tracker,
             messageBus: $bus,
-            resolvedTechnicalName: self::TYPE_ORDER_CONFIRMATION,
+            resolvedTechnicalName: self::TYPE_SHOP,
         );
 
         $event = new MailBeforeValidateEvent(
             ['templateId' => self::TEMPLATE_ID],
             Context::createDefaultContext(),
-            ['order' => $this->order(), 'eventName' => self::EVENT_ORDER_PLACED],
+            ['order' => $this->order(), 'eventName' => self::EVENT_ORDER_PLACED, ShopAttachmentMail::DATA_KEY => ['attach' => true]],
         );
         $sub->onMailBeforeValidate($event);
 
@@ -358,13 +387,13 @@ final class MailBeforeValidateSubscriberTest extends TestCase
             configOverrides: ['enableMailRetry' => false],
             statusTracker: $tracker,
             messageBus: $bus,
-            resolvedTechnicalName: self::TYPE_ORDER_CONFIRMATION,
+            resolvedTechnicalName: self::TYPE_SHOP,
         );
 
         $event = new MailBeforeValidateEvent(
             ['templateId' => self::TEMPLATE_ID],
             Context::createDefaultContext(),
-            ['order' => $this->order(), 'eventName' => self::EVENT_ORDER_PLACED],
+            ['order' => $this->order(), 'eventName' => self::EVENT_ORDER_PLACED, ShopAttachmentMail::DATA_KEY => ['attach' => true]],
         );
         $sub->onMailBeforeValidate($event);
     }
@@ -437,7 +466,7 @@ final class MailBeforeValidateSubscriberTest extends TestCase
             $mediaService,
             $this->configProvider($configOverrides),
             $this->createMock(MailAttachmentStatusTrackerInterface::class),
-            $this->templateTypeResolver(self::TYPE_ORDER_CONFIRMATION),
+            $this->templateTypeResolver(self::TYPE_SHOP),
             $this->createMock(MessageBusInterface::class),
             new NullLogger(),
         );

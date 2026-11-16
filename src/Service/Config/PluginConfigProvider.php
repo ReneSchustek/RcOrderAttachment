@@ -37,6 +37,9 @@ final class PluginConfigProvider
         'rateLimitPerMinute' => 30,
         'mailTemplateWhitelist' => 'order_confirmation_mail',
         'enableMailRetry' => false,
+        'shopMailRecipient' => '',
+        // 20 MB nehmen die meisten Postfächer an, mit der Kodierung werden daraus rund 27 MB.
+        'shopMailMaxSizeKb' => 20480,
     ];
 
     public function __construct(
@@ -72,6 +75,8 @@ final class PluginConfigProvider
             rateLimitPerMinute: max(0, $this->readInt('rateLimitPerMinute', $salesChannelId)),
             mailTemplateWhitelist: $this->parseTemplateNames($this->readString('mailTemplateWhitelist', $salesChannelId)),
             enableMailRetry: $this->readBool('enableMailRetry', $salesChannelId),
+            shopMailRecipient: $this->readString('shopMailRecipient', $salesChannelId),
+            shopMailMaxSizeKb: max(0, $this->readInt('shopMailMaxSizeKb', $salesChannelId)),
         );
     }
 

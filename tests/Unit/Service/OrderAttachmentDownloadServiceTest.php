@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Ruhrcoder\RcOrderAttachment\Tests\Unit\Service;
 
+use League\Flysystem\UnableToReadFile;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\StreamInterface;
 use Psr\Log\NullLogger;
@@ -180,6 +181,56 @@ final class OrderAttachmentDownloadServiceTest extends TestCase
         }
 
         self::assertTrue($ownerFilterApplied, 'Owner-Check-Filter fehlt — IDOR-Schutz nicht angewandt.');
+    }
+
+    /**
+     * Was: Dateinamen mit Umlaut, Prozentzeichen und anderen Zeichen außerhalb von ASCII.
+     * Warum: Symfony wirft sonst beim Bauen der Kopfzeile, der Download endete mit 500.
+     * Erwartet: Der Rückfallname ist reines ASCII, der echte Name steht in `filename*`.
+     *
+     * @dataProvider unusualFilenames
+     */
+    public function testUnusualFilenamesStillDownload(string $filename, string $expectedFallback): void
+    {
+        $attachment = $this->attachment();
+        $attachment->setOriginalFileName($filename);
+        $mediaService = $this->createMock(MediaService::class);
+        $mediaService->method('loadFileStream')->willReturn($this->stubStream('X'));
+
+        $service = new OrderAttachmentDownloadService($this->loader([$attachment]), $mediaService, new NullLogger());
+        $disposition = $service->streamForAdmin(self::FIXED_ATTACHMENT_ID, Context::createDefaultContext())
+            ->headers->get('Content-Disposition') ?? '';
+
+        self::assertStringContainsString($expectedFallback, $disposition);
+        self::assertStringContainsString("filename*=utf-8''", $disposition);
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function unusualFilenames(): array
+    {
+        return [
+            'Umlaut' => ['Schrägschnitt.pdf', 'filename=Schraegschnitt.pdf'],
+            'Prozent' => ['100%-Maß.pdf', 'filename=100_-Mass.pdf'],
+            'anderes Zeichen' => ['Länge€.pdf', 'filename=Laenge_.pdf'],
+        ];
+    }
+
+    /**
+     * Was: Der Datensatz des Mediums besteht, die Datei fehlt im Speicher.
+     * Warum: Der Strom öffnete erst nach den Kopfzeilen, der Kunde bekam ein leeres 200 statt einer Fehlermeldung.
+     * Erwartet: dieselbe Ausnahme wie bei fehlendem Medium, die beide Aufrufer als 404 beantworten.
+     */
+    public function testAMissingFileIsReportedBeforeTheResponseStarts(): void
+    {
+        $mediaService = $this->createMock(MediaService::class);
+        $mediaService->method('loadFileStream')->willThrowException(UnableToReadFile::fromLocation('weg.pdf'));
+
+        $service = new OrderAttachmentDownloadService($this->loader([$this->attachment()]), $mediaService, new NullLogger());
+
+        $this->expectException(MediaNotLoadedException::class);
+        $service->streamForAdmin(self::FIXED_ATTACHMENT_ID, Context::createDefaultContext());
     }
 
     /**

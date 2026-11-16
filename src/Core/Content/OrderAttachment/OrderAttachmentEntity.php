@@ -83,6 +83,15 @@ final class OrderAttachmentEntity extends Entity
         $this->mimeType = $mimeType;
     }
 
+    /**
+     * Der Klassenname ergäbe `order_attachment`, die Entität heißt aber `rc_order_attachment`. Aus der Datenbank geladen
+     * setzt der Kern den Namen selbst; ein von Hand erzeugtes Objekt, etwa in einem Test, bekäme sonst den falschen.
+     */
+    public function getApiAlias(): string
+    {
+        return OrderAttachmentDefinition::ENTITY_NAME;
+    }
+
     public function getFileSize(): int
     {
         return $this->fileSize;

@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.1.0] - 2026-11-10: Anhänge nur an den Shop
+
+> **Deployment:** `plugin:update RcOrderAttachment` (Migration legt die Mailvorlage an), `cache:clear`. Die Mail an den Shop geht über die Warteschlange, der Nachrichten-Worker muss laufen.
+
+### Geändert
+
+- **Die Bestellbestätigung an den Kunden geht ohne Anhang hinaus.** Am 09.11.2026 scheiterten beide Bestellmails einer Bestellung an der Größengrenze des Mailservers; der Kunde hat die Dateien ohnehin selbst.
+- **Der Shop bekommt eine eigene Mail** „Anhänge zur Bestellung …“ mit den Dateien, an die eingestellte Adresse oder die des Shops. Über der eingestellten Größe (Vorgabe 20 MB) nennt sie die Dateien nur und verweist auf die Bestellung in der Verwaltung. Ein Fehler beim Versand hält die Bestellung nicht auf.
+- Die Einstellung „An Bestätigungs-Mail anhängen“ heißt jetzt „Dateien per Mail an den Shop“. Die Liste der Mailvorlagen entfällt.
+
+## [1.0.12] - 2026-11-04: Download mit Umlaut, fehlende Datei
+
+> **Deployment:** `php bin/console plugin:update RcOrderAttachment && php bin/console cache:clear`.
+
+### Behoben
+
+- **Umlaut oder `%` im Dateinamen:** Der Download von `Schrägschnitt.pdf` brach beim Bauen der Kopfzeile ab, in der Verwaltung wie im Kundenkonto. Der Browser bekommt jetzt einen ASCII-Rückfallnamen und den echten Namen.
+- **Fehlende Datei:** Fehlt die Datei, während der Datensatz noch besteht, kommt jetzt 404 statt eines leeren 200, und das Protokoll nennt den Anhang.
+
 ## [1.0.11] - 2026-10-06: Befunde aus der Kommentar-Durchsicht
 
 > **Deployment:** `php bin/console plugin:update RcOrderAttachment && php bin/console cache:clear`,
