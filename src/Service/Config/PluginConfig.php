@@ -80,6 +80,30 @@ final readonly class PluginConfig
         return $this->maxTotalSizeKb * 1024;
     }
 
+    /** Für den Kunden lesbar, etwa „10 MB“ statt „10240 KB“. */
+    public function maxFileSizeLabel(): string
+    {
+        return self::sizeLabel($this->maxFileSizeKb);
+    }
+
+    public function maxTotalSizeLabel(): string
+    {
+        return self::sizeLabel($this->maxTotalSizeKb);
+    }
+
+    /**
+     * Ab einem Megabyte in MB, ganze Zahlen ohne Nachkommastelle, sonst eine mit Komma; darunter in KB.
+     */
+    private static function sizeLabel(int $kb): string
+    {
+        if ($kb < 1024) {
+            return $kb . ' KB';
+        }
+        $mb = $kb / 1024;
+
+        return ($kb % 1024 === 0 ? (string) intdiv($kb, 1024) : number_format($mb, 1, ',', '')) . ' MB';
+    }
+
     public function isExtensionAllowed(string $extension): bool
     {
         return \in_array(strtolower($extension), $this->allowedExtensions, true);

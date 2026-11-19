@@ -33,6 +33,24 @@ final class ErrorMessagesContractTest extends TestCase
         }
     }
 
+    /**
+     * Die Meldung zu großer Dateien nennt die Grenze; der Kunde soll nicht raten, wie klein es sein muss.
+     */
+    public function testSizeMessagesNameTheLimit(): void
+    {
+        $template = (string) file_get_contents(self::TEMPLATE);
+        self::assertStringContainsString("fileSizeExceeded'|trans({ '%size%': config.maxFileSizeLabel() })", $template);
+        self::assertStringContainsString("totalSizeExceeded'|trans({ '%size%': config.maxTotalSizeLabel() })", $template);
+        self::assertStringNotContainsString("~ ' KB'", $template);
+
+        foreach (self::SNIPPETS as $file) {
+            /** @var array{rcOrderAttachment: array{error: array<string, string>}} $snippets */
+            $snippets = json_decode((string) file_get_contents($file), true, 512, \JSON_THROW_ON_ERROR);
+            self::assertStringContainsString('%size%', $snippets['rcOrderAttachment']['error']['fileSizeExceeded'], basename($file));
+            self::assertStringContainsString('%size%', $snippets['rcOrderAttachment']['error']['totalSizeExceeded'], basename($file));
+        }
+    }
+
     public function testEveryValidationCodeHasASnippetInBothLanguages(): void
     {
         foreach (self::SNIPPETS as $file) {

@@ -3,7 +3,7 @@
     "description": "Shopware 6 Plugin — Customer lädt im Checkout Dokumente hoch (Zeichnungen, Skizzen, Pläne), die an die Bestell-Bestätigungs-Mail angehängt werden.",
     "type": "shopware-platform-plugin",
     "license": "proprietary",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "authors": [
         {
             "name": "René Schustek",

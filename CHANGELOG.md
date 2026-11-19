@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.1] - 2026-11-17: Grenzen in MB, Meldung nennt die Grenze
+
+> **Deployment:** `php bin/console plugin:update RcOrderAttachment && php bin/console cache:clear`.
+
+### Geändert
+
+- **Die Grenzen in der Kasse stehen in MB** („Maximal 10 MB pro Datei“, „Maximal 40 MB insgesamt“) statt in KB.
+- **Die Meldung zu großer Dateien nennt die Grenze:** „Die Datei ist zu groß, höchstens 10 MB je Datei.“ und „Alle Dateien zusammen dürfen höchstens 40 MB groß sein.“
+
 ## [1.1.0] - 2026-11-10: Anhänge nur an den Shop
 
 > **Deployment:** `plugin:update RcOrderAttachment` (Migration legt die Mailvorlage an), `cache:clear`. Die Mail an den Shop geht über die Warteschlange, der Nachrichten-Worker muss laufen.

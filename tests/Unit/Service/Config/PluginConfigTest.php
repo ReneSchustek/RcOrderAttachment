@@ -27,6 +27,18 @@ final class PluginConfigTest extends TestCase
     }
 
     /**
+     * Was: Die Grenzen, wie der Kunde sie in der Kasse liest.
+     * Warum: „10240 KB" muss ein Kunde erst umrechnen; „10 MB" versteht er sofort.
+     */
+    public function testSizeLabelsAreReadable(): void
+    {
+        self::assertSame('10 MB', $this->build(maxFileSizeKb: 10240)->maxFileSizeLabel());
+        self::assertSame('40 MB', $this->build(maxTotalSizeKb: 40960)->maxTotalSizeLabel());
+        self::assertSame('1,5 MB', $this->build(maxFileSizeKb: 1536)->maxFileSizeLabel());
+        self::assertSame('500 KB', $this->build(maxTotalSizeKb: 500)->maxTotalSizeLabel());
+    }
+
+    /**
      * Endungen kommen in beliebiger Schreibweise aus dem Browser. Ein Vergleich mit
      * Groß- und Kleinschreibung wiese `IMG.JPG` ab, obwohl `jpg` erlaubt ist.
      */

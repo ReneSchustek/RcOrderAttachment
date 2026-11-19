@@ -32,8 +32,8 @@
              extensionBlacklisted: 'rcOrderAttachment.error.extensionBlacklisted'|trans|striptags,
              mimeNotAllowed: 'rcOrderAttachment.error.mimeNotAllowed'|trans|striptags,
              magicBytesMismatch: 'rcOrderAttachment.error.magicBytesMismatch'|trans|striptags,
-             fileSizeExceeded: 'rcOrderAttachment.error.fileSizeExceeded'|trans|striptags,
-             totalSizeExceeded: 'rcOrderAttachment.error.totalSizeExceeded'|trans|striptags,
+             fileSizeExceeded: 'rcOrderAttachment.error.fileSizeExceeded'|trans({ '%size%': config.maxFileSizeLabel() })|striptags,
+             totalSizeExceeded: 'rcOrderAttachment.error.totalSizeExceeded'|trans({ '%size%': config.maxTotalSizeLabel() })|striptags,
              fileCountExceeded: 'rcOrderAttachment.error.fileCountExceeded'|trans|striptags,
              dangerousContentDetected: 'rcOrderAttachment.error.dangerousContentDetected'|trans|striptags,
              rateLimitExceeded: 'rcOrderAttachment.error.rateLimitExceeded'|trans|striptags,
@@ -62,8 +62,8 @@
             {% block page_checkout_rc_order_attachment_limits %}
                 <ul id="rc-order-attachment-limits" class="rc-order-attachment-limits small text-muted list-unstyled mb-3">
                     <li>{{ 'rcOrderAttachment.limits.maxFiles'|trans({ '%count%': config.maxFiles })|sw_sanitize }}</li>
-                    <li>{{ 'rcOrderAttachment.limits.maxFileSize'|trans({ '%size%': config.maxFileSizeKb ~ ' KB' })|sw_sanitize }}</li>
-                    <li>{{ 'rcOrderAttachment.limits.maxTotalSize'|trans({ '%size%': config.maxTotalSizeKb ~ ' KB' })|sw_sanitize }}</li>
+                    <li>{{ 'rcOrderAttachment.limits.maxFileSize'|trans({ '%size%': config.maxFileSizeLabel() })|sw_sanitize }}</li>
+                    <li>{{ 'rcOrderAttachment.limits.maxTotalSize'|trans({ '%size%': config.maxTotalSizeLabel() })|sw_sanitize }}</li>
                     <li>{{ 'rcOrderAttachment.limits.allowedExtensions'|trans({ '%list%': rcAttachment.allowedExtensionsCsv })|sw_sanitize }}</li>
                 </ul>
             {% endblock %}
